@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import GuestRsvp, { type RsvpStatus } from "./guest-rsvp";
 
 type Invitation = {
   guestName: string;
-  event: { name: string; venue: string; startsAt: string };
+  rsvpStatus: RsvpStatus;
+  event: {
+    name: string;
+    venue: string;
+    startsAt: string;
+  };
 };
 
 type View =
@@ -122,6 +128,13 @@ export default function GuestPassPage() {
                   Show this code to event staff at the entrance.
                 </figcaption>
               </figure>
+
+              <GuestRsvp
+                key={view.token}
+                token={view.token}
+                initialStatus={view.invitation.rsvpStatus}
+                onUnavailable={() => setView({ status: "unavailable" })}
+              />
             </>
           )}
         </div>
