@@ -25,7 +25,22 @@ export class StaffRepository {
   transaction<T>(work: (tx: DbClient) => Promise<T>) {
     return this.db.$transaction(work, { isolationLevel: 'ReadCommitted' });
   }
+  async getAttendance(tx: DbClient, eventId: string) {
+    const [totals] = await tx.$queryRaw<
+      { checkedIn: number; expected: number }[]
+    >`
+    SELECT
+      count(c.invitation_id)::integer AS "checkedIn",
+      (count(*) FILTER (
+        WHERE c.invitation_id IS NULL AND i.revoked_at IS NULL
+      ))::integer AS "expected"
+    FROM invitations i
+    LEFT JOIN check_ins c ON c.invitation_id = i.id
+    WHERE i.event_id = ${eventId}::uuid
+  `;
 
+    return totals;
+  }
   async findActiveSession(tx: DbClient, tokenHash: string) {
     const [staff] = await tx.$queryRaw<{ id: string }[]>`
       SELECT s.id

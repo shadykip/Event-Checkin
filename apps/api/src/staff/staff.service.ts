@@ -66,26 +66,52 @@ export class StaffService {
       return this.repository.listAssignedEvents(tx, staff.id);
     });
   }
-
-  checkIn(sessionToken: unknown, slug: string, passToken: unknown) {
+  getAttendance(sessionToken: unknown, slug: string) {
     return this.repository.transaction(async (tx) => {
-      const staff = await this.requireStaff(tx, sessionToken);
-      const assignment = await this.repository.lockAssignment(
+      const { eventId } = await this.requireAssignment(tx, sessionToken, slug);
+      return this.repository.getAttendance(tx, eventId);
+    });
+  }
+
+  private async requireAssignment(
+    tx: Prisma.TransactionClient,
+    sessionToken: unknown,
+    slug: string,
+  ) {
+    const staff = await this.requireStaff(tx, sessionToken);
+    const assignment = await this.repository.lockAssignment(tx, staff.id, slug);
+
+    if (!assignment) {
+      throw new ForbiddenException('You are not assigned to this event');
+    }
+
+    return { staffId: staff.id, eventId: assignment.eventId };
+  }
+
+  checkIn(sessionToken: unknown, slug: string, passToken: string) {
+    return this.repository.transaction(async (tx) => {
+      const { staffId, eventId } = await this.requireAssignment(
         tx,
-        staff.id,
+        sessionToken,
         slug,
       );
+      // const staff = await this.requireStaff(tx, sessionToken);
+      // const assignment = await this.repository.lockAssignment(
+      //   tx,
+      //   staff.id,
+      //   slug,
+      // );
 
-      if (!assignment) {
-        throw new ForbiddenException('You are not assigned to this event');
-      }
-      if (!isToken(passToken)) {
-        throw new NotFoundException('Pass unavailable for this event');
-      }
+      // if (!assignment) {
+      //   throw new ForbiddenException('You are not assigned to this event');
+      // }
+      // if (!isToken(passToken)) {
+      //   throw new NotFoundException('Pass unavailable for this event');
+      // }
 
       const invitation = await this.repository.lockValidInvitation(
         tx,
-        assignment.eventId,
+        eventId,
         hashToken(passToken),
       );
       if (!invitation)
@@ -94,7 +120,7 @@ export class StaffService {
       const admission = await this.repository.recordAdmission(
         tx,
         invitation.id,
-        staff.id,
+        staffId,
       );
 
       return {

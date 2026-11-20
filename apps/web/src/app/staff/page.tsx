@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import CheckInForm from "./check-in-form";
+import AttendanceSummary from "./attendance-summary";
 
 type StaffEvent = {
   slug: string;
@@ -175,6 +176,7 @@ export default function StaffPage() {
                 <li key={event.slug} className="rounded-lg border border-stone-200 p-4">
                   <h2 className="font-semibold">{event.name}</h2>
                   <p className="mt-1 text-sm text-stone-600">{event.venue}</p>
+                  <AttendanceSummary slug={event.slug} />
                   <CheckInForm slug={event.slug} />
                 </li>
               ))}

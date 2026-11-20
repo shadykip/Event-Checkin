@@ -31,6 +31,10 @@ const nextConfig: NextConfig = {
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/check-ins`,
       },
       {
+        source: "/api/staff/events/:slug/attendance",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/attendance`,
+      },
+      {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,
       },

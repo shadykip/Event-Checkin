@@ -51,11 +51,15 @@ export class StaffController {
   checkIn(
     @Req() request: Request,
     @Param('slug') slug: string,
-    @Body('token') token: unknown,
+    @Body('token') token: string,
   ) {
     return this.staff.checkIn(request.cookies?.[cookieName], slug, token);
   }
-
+  @Get('events/:slug/attendance')
+  @Header('Cache-Control', 'no-store')
+  attendance(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.getAttendance(request.cookies?.[cookieName], slug);
+  }
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')
