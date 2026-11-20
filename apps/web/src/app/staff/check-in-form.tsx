@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-
+import { useCallback, useRef, useState, type FormEvent } from "react";
+import PassCamera from "./pass-camera";
 type Admission = {
   status: "checked_in" | "already_checked_in";
   guestName: string;
@@ -23,6 +23,18 @@ export default function CheckInForm({ slug }: { slug: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanReady, setScanReady] = useState(false);
+
+  const acceptScan = useCallback((token: string) => {
+    if (inputRef.current) inputRef.current.value = token;
+
+    setResult(null);
+    setScanReady(true);
+    setCameraOpen(false);
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
@@ -37,7 +49,8 @@ export default function CheckInForm({ slug }: { slug: string }) {
       });
       return;
     }
-
+    setCameraOpen(false);
+    setScanReady(false);
     setSubmitting(true);
     setResult(null);
 
@@ -60,7 +73,7 @@ export default function CheckInForm({ slug }: { slug: string }) {
         };
         throw new Error(
           messages[response.status] ??
-            "Could not confirm admission. Submit the same pass again to check its status.",
+          "Could not confirm admission. Submit the same pass again to check its status.",
         );
       }
 
@@ -83,10 +96,35 @@ export default function CheckInForm({ slug }: { slug: string }) {
   }
 
   return (
-    <details className="mt-4 border-t border-stone-200 pt-3">
+    <details onToggle={(event) => {
+      if (!event.currentTarget.open) setCameraOpen(false);
+    }} className="mt-4 border-t border-stone-200 pt-3">
       <summary className="cursor-pointer font-medium">Check in a guest</summary>
 
       <form onSubmit={submit} className="mt-4 space-y-3">
+        {cameraOpen ? (
+          <PassCamera onRead={acceptScan} onClose={() => setCameraOpen(false)} />
+        ) : (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => {
+              setResult(null);
+              setScanReady(false);
+              if (inputRef.current) inputRef.current.value = "";
+              setCameraOpen(true);
+            }}
+            className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium"
+          >
+            Scan guest QR
+          </button>
+        )}
+
+        {scanReady && (
+          <p role="status" className="text-sm text-stone-700">
+            Pass scanned. Select Confirm check-in to admit this guest.
+          </p>
+        )}
         <label className="block">
           <span className="text-sm font-medium">Guest pass token</span>
           <input
@@ -95,8 +133,12 @@ export default function CheckInForm({ slug }: { slug: string }) {
             autoComplete="off"
             spellCheck={false}
             required
+            ref={inputRef}
             readOnly={submitting}
-            onChange={() => setResult(null)}
+            onChange={() => {
+              setScanReady(false);
+              setResult(null);
+            }}
             className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2"
           />
         </label>
