@@ -5,6 +5,7 @@ import AttendanceSummary from "./attendance-summary";
 import CheckInForm from "./check-in-form";
 import InviteGuestForm from "./invite-guest-form";
 import styles from "./staff-styles";
+import GuestList from "./guest-list";
 
 type Props = {
     slug: string;
@@ -26,7 +27,10 @@ export default function EventOperations({ slug, role }: Props) {
             </div>
 
             {role === "ORGANIZER" && (
-                <InviteGuestForm slug={slug} onIssued={refreshAttendance} />
+                <>
+                    <InviteGuestForm slug={slug} onIssued={refreshAttendance} />
+                    <GuestList slug={slug} version={attendanceVersion} />
+                </>
             )}
         </>
     );

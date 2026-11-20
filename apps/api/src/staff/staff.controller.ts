@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -59,6 +60,22 @@ export class StaffController {
   @Header('Cache-Control', 'no-store')
   attendance(@Req() request: Request, @Param('slug') slug: string) {
     return this.staff.getAttendance(request.cookies?.[cookieName], slug);
+  }
+
+  @Get('events/:slug/invitations')
+  @Header('Cache-Control', 'no-store')
+  listInvitations(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Query('page') page: unknown,
+    @Query('q') query: unknown,
+  ) {
+    return this.staff.listInvitations(
+      request.cookies?.[cookieName],
+      slug,
+      page,
+      query,
+    );
   }
 
   @Post('events/:slug/invitations')

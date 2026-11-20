@@ -101,13 +101,7 @@ export class StaffService {
     rawEmail: unknown,
   ) {
     return this.repository.transaction(async (tx) => {
-      const assignment = await this.requireAssignment(tx, sessionToken, slug);
-
-      if (assignment.role !== 'ORGANIZER') {
-        throw new ForbiddenException(
-          'Only an organizer for this event can issue invitations.',
-        );
-      }
+      const assignment = await this.requireOrganizer(tx, sessionToken, slug);
 
       const guestName = typeof rawName === 'string' ? rawName.trim() : '';
       const guestEmail =
@@ -149,6 +143,87 @@ export class StaffService {
         passPath: `/pass#${token}`,
       };
     });
+  }
+
+  listInvitations(
+    sessionToken: unknown,
+    slug: string,
+    rawPage: unknown,
+    rawQuery?: unknown,
+  ) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      if (
+        rawQuery !== undefined &&
+        (typeof rawQuery !== 'string' || rawQuery.length > 200)
+      ) {
+        throw new BadRequestException('Search must be at most 200 characters.');
+      }
+
+      const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+
+      const pageText = rawPage === undefined ? '1' : rawPage;
+      if (typeof pageText !== 'string' || !/^[1-9]\d*$/.test(pageText)) {
+        throw new BadRequestException('Page must be a positive integer.');
+      }
+
+      const page = Number(pageText);
+      const pageSize = 25;
+      const skip = (page - 1) * pageSize;
+
+      if (!Number.isSafeInteger(skip) || skip > 2_147_483_647) {
+        throw new BadRequestException('Page is too large.');
+      }
+
+      // One extra row tells the UI whether to enable Next.
+      const rows = await this.repository.listInvitations(
+        tx,
+        eventId,
+        skip,
+        pageSize + 1,
+        query,
+      );
+
+      const items = rows.slice(0, pageSize).map((row) => {
+        const admission = row.checkIns[0];
+
+        let status: 'expected' | 'checked_in' | 'revoked' = 'expected';
+
+        if (admission) {
+          status = 'checked_in';
+        } else if (row.revokedAt) {
+          status = 'revoked';
+        }
+
+        return {
+          id: row.id,
+          guestName: row.guestName,
+          guestEmail: row.guestEmail,
+          invitedAt: row.createdAt,
+          checkedInAt: admission?.checkedInAt ?? null,
+          status,
+        };
+      });
+
+      return { items, page, pageSize, hasNextPage: rows.length > pageSize };
+    });
+  }
+
+  private async requireOrganizer(
+    tx: Prisma.TransactionClient,
+    sessionToken: unknown,
+    slug: string,
+  ) {
+    const assignment = await this.requireAssignment(tx, sessionToken, slug);
+
+    if (assignment.role !== 'ORGANIZER') {
+      throw new ForbiddenException(
+        'Organizer access is required for this event.',
+      );
+    }
+
+    return assignment;
   }
 
   checkIn(sessionToken: unknown, slug: string, passToken: string) {

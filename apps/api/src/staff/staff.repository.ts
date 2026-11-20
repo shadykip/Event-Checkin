@@ -74,6 +74,45 @@ export class StaffRepository {
     return assignments.map(({ event, role }) => ({ ...event, role }));
   }
 
+  listInvitations(
+    tx: DbClient,
+    eventId: string,
+    skip: number,
+    take: number,
+    query = '',
+  ) {
+    const term = query.replace(/[\\%_]/g, '\\$&');
+
+    return tx.invitation.findMany({
+      where: {
+        eventId,
+        ...(term
+          ? {
+              OR: [
+                { guestName: { contains: term, mode: 'insensitive' as const } },
+                {
+                  guestEmail: { contains: term, mode: 'insensitive' as const },
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        guestName: true,
+        guestEmail: true,
+        createdAt: true,
+        revokedAt: true,
+        checkIns: {
+          select: { checkedInAt: true },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip,
+      take,
+    });
+  }
+
   async lockAssignment(tx: DbClient, staffId: string, slug: string) {
     const [assignment] = await tx.$queryRaw<
       { eventId: string; role: 'DOOR_STAFF' | 'ORGANIZER' }[]
