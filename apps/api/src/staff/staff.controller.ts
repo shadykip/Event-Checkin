@@ -95,6 +95,21 @@ export class StaffController {
     );
   }
 
+  @Post('events/:slug/invitations/:invitationId/revoke')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  revokeInvitation(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('invitationId') invitationId: string,
+  ) {
+    return this.staff.revokeInvitation(
+      request.cookies?.[cookieName],
+      slug,
+      invitationId,
+    );
+  }
+
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')

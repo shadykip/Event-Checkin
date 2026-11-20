@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
+import RevokePassButton from "./revoke-pass-button";
 
 type GuestStatus = "expected" | "checked_in" | "revoked";
 
@@ -40,10 +41,13 @@ const admissionTime = new Intl.DateTimeFormat("en-KE", {
 export default function GuestList({
     slug,
     version,
+    onRevoked,
 }: {
     slug: string;
     version: number;
+    onRevoked: () => void;
 }) {
+    const [notice, setNotice] = useState("");
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState("");
     const [query, setQuery] = useState("");
@@ -144,6 +148,10 @@ export default function GuestList({
                         )}
                     </form>
 
+                    <p role="status" className="text-sm font-medium text-emerald-800">
+                        {notice}
+                    </p>
+
                     {!current && <p role="status" className={styles.muted}>Loading guests…</p>}
 
                     {current?.error && (
@@ -174,6 +182,7 @@ export default function GuestList({
                                                 <th scope="col" className="py-2 pr-4">Guest</th>
                                                 <th scope="col" className="py-2 pr-4">Status</th>
                                                 <th scope="col" className="py-2">Check-in · Nairobi time</th>
+                                                <th scope="col" className="py-2 pl-3">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -194,6 +203,18 @@ export default function GuestList({
                                                                 {admissionTime.format(new Date(guest.checkedInAt))}
                                                             </time>
                                                         ) : "—"}
+                                                    </td>
+                                                    <td className="py-3 pl-3 align-top">
+                                                        {guest.status === "expected" && (
+                                                            <RevokePassButton
+                                                                slug={slug}
+                                                                guest={guest}
+                                                                onRevoked={(guestName) => {
+                                                                    setNotice(`Pass revoked for ${guestName}.`);
+                                                                    onRevoked();
+                                                                }}
+                                                            />
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))}

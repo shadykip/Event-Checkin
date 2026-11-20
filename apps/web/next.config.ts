@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,
       },
+      {
+        source: "/api/staff/events/:slug/invitations/:invitationId/revoke",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/invitations/:invitationId/revoke`,
+      },
     ];
   },
 };

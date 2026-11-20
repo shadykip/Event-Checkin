@@ -185,6 +185,19 @@ export class StaffRepository {
       checkedInBy: admission.staff.name,
     };
   }
+
+  async revokeInvitation(tx: DbClient, eventId: string, invitationId: string) {
+    const [invitation] = await tx.$queryRaw<{ id: string; revokedAt: Date }[]>`
+    UPDATE invitations
+    SET revoked_at = COALESCE(revoked_at, clock_timestamp())
+    WHERE id = ${invitationId}::uuid
+      AND event_id = ${eventId}::uuid
+    RETURNING id, revoked_at AS "revokedAt"
+  `;
+
+    return invitation;
+  }
+
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },

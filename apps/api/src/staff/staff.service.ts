@@ -257,6 +257,30 @@ export class StaffService {
     });
   }
 
+  revokeInvitation(sessionToken: unknown, slug: string, invitationId: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const uuidPattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      if (!uuidPattern.test(invitationId)) {
+        throw new BadRequestException('Invalid invitation ID.');
+      }
+
+      const invitation = await this.repository.revokeInvitation(
+        tx,
+        eventId,
+        invitationId,
+      );
+
+      if (!invitation) {
+        throw new NotFoundException('Invitation not found for this event.');
+      }
+
+      return invitation;
+    });
+  }
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {
       await this.repository.deleteSession(hashToken(sessionToken));
