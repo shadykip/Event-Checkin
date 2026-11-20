@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import CheckInForm from "./check-in-form";
 import AttendanceSummary from "./attendance-summary";
+import CheckInForm from "./check-in-form";
+import styles from "./staff-styles";
 
 type StaffEvent = {
   slug: string;
@@ -22,8 +23,13 @@ async function loadStaffEvents(signal?: AbortSignal): Promise<Screen> {
     signal,
   });
 
-  if (response.status === 401) return { status: "login" };
-  if (!response.ok) throw new Error("Could not load assigned events");
+  if (response.status === 401) {
+    return { status: "login" };
+  }
+
+  if (!response.ok) {
+    throw new Error("Could not load assigned events.");
+  }
 
   const events: StaffEvent[] = await response.json();
   return { status: "ready", events };
@@ -37,20 +43,31 @@ export default function StaffPage() {
   useEffect(() => {
     const controller = new AbortController();
 
-    loadStaffEvents(controller.signal)
-      .then((next) => {
-        if (!controller.signal.aborted) setScreen(next);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setScreen({ status: "error" });
-      });
+    async function checkSession() {
+      try {
+        const next = await loadStaffEvents(controller.signal);
+
+        if (!controller.signal.aborted) {
+          setScreen(next);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setScreen({ status: "error" });
+        }
+      }
+    }
+
+    void checkSession();
 
     return () => controller.abort();
   }, []);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting) return;
+
     const form = new FormData(event.currentTarget);
+
     setSubmitting(true);
     setMessage("");
 
@@ -68,12 +85,16 @@ export default function StaffPage() {
         setMessage("Incorrect email or password.");
         return;
       }
-      if (!response.ok) throw new Error("Sign-in request failed");
+
+      if (!response.ok) {
+        throw new Error("Sign-in request failed.");
+      }
 
       const next = await loadStaffEvents();
       setScreen(next);
+
       if (next.status === "login") {
-        setMessage("Sign-in succeeded, but the session cookie was not received.");
+        setMessage("Your session could not be opened. Please sign in again.");
       }
     } catch {
       setMessage("Could not reach the staff service. Please try again.");
@@ -83,12 +104,20 @@ export default function StaffPage() {
   }
 
   async function signOut() {
+    if (submitting) return;
+
     setSubmitting(true);
     setMessage("");
 
     try {
-      const response = await fetch("/api/staff/logout", { method: "POST" });
-      if (!response.ok) throw new Error("Sign-out failed");
+      const response = await fetch("/api/staff/logout", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Sign-out failed.");
+      }
+
       setScreen({ status: "login" });
     } catch {
       setMessage("Could not confirm sign-out. Please try again.");
@@ -98,92 +127,116 @@ export default function StaffPage() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 px-5 py-14 text-stone-950">
-      <section className="mx-auto max-w-lg rounded-xl border border-stone-200 bg-white p-7">
-        <h1 className="text-2xl font-semibold">
-          {screen.status === "ready" ? "Your assigned events" : "Staff sign-in"}
-        </h1>
+    <main className={styles.shell}>
+      <header className={styles.bar}>
+        <div className={styles.barInner}>
+          <span className={styles.brand}>Event check-in</span>
 
-        {screen.status === "ready" && (
-          <div className="mt-3">
+          {screen.status === "ready" && (
             <button
               type="button"
+              className={styles.barButton}
               onClick={signOut}
               disabled={submitting}
-              className="text-sm font-medium underline underline-offset-4 disabled:opacity-60"
             >
               {submitting ? "Signing out…" : "Sign out"}
             </button>
+          )}
+        </div>
+      </header>
 
-            {message && (
-              <p role="alert" className="mt-2 text-sm text-red-700">{message}</p>
-            )}
-          </div>
-        )}
-
+      <div className={styles.workspace}>
         {screen.status === "loading" && (
-          <p role="status" className="mt-5">Checking your session…</p>
+          <p role="status">Checking your staff session…</p>
         )}
 
         {screen.status === "error" && (
-          <p role="alert" className="mt-5">
-            Could not load your events. Refresh to try again.
-          </p>
+          <div role="alert" className={`${styles.feedback} ${styles.error}`}>
+            Could not load your events. Refresh the page to try again.
+          </div>
         )}
 
         {screen.status === "login" && (
-          <form onSubmit={signIn} className="mt-6 space-y-5">
-            <label className="block">
-              <span className="text-sm font-medium">Email address</span>
-              <input
-                name="email"
-                type="email"
-                autoComplete="username"
-                required
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
-              />
-            </label>
+          <section className={styles.loginCard} aria-labelledby="staff-login-title">
+            <h1 id="staff-login-title" className={styles.title}>
+              Staff sign-in
+            </h1>
 
-            <label className="block">
-              <span className="text-sm font-medium">Password</span>
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
-              />
-            </label>
+            <form onSubmit={signIn} className={styles.stack}>
+              <label className={styles.label}>
+                Email address
+                <input
+                  className={styles.input}
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                />
+              </label>
 
-            {message && <p role="alert" className="text-sm text-red-700">{message}</p>}
+              <label className={styles.label}>
+                Password
+                <input
+                  className={styles.input}
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-stone-900 px-4 py-2 text-white disabled:opacity-60"
-            >
-              {submitting ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
+              {message && (
+                <p role="alert" className={`${styles.feedback} ${styles.error}`}>
+                  {message}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className={styles.primary}
+                disabled={submitting}
+              >
+                {submitting ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+          </section>
         )}
 
         {screen.status === "ready" && (
-          screen.events.length === 0 ? (
-            <p className="mt-5">You have no event assignments yet.</p>
-          ) : (
-            <ul className="mt-6 space-y-3">
-              {screen.events.map((event) => (
-                <li key={event.slug} className="rounded-lg border border-stone-200 p-4">
-                  <h2 className="font-semibold">{event.name}</h2>
-                  <p className="mt-1 text-sm text-stone-600">{event.venue}</p>
-                  <AttendanceSummary slug={event.slug} />
-                  <CheckInForm slug={event.slug} />
-                </li>
-              ))}
-            </ul>
-          )
+          <>
+            <h1 className={styles.title}>Your assigned events</h1>
+
+            {message && (
+              <p role="alert" className={`${styles.feedback} ${styles.error}`}>
+                {message}
+              </p>
+            )}
+
+            {screen.events.length === 0 ? (
+              <div className={`${styles.card} ${styles.panel}`}>
+                You have no event assignments yet. Ask your organizer to assign
+                you to an event.
+              </div>
+            ) : (
+              <ul className={styles.eventList}>
+                {screen.events.map((event) => (
+                  <li key={event.slug} className={styles.card}>
+                    <header className={styles.eventHeader}>
+                      <h2 className={styles.eventName}>{event.name}</h2>
+                      <p className={styles.muted}>{event.venue}</p>
+                    </header>
+
+                    <div className={styles.eventBody}>
+                      <CheckInForm slug={event.slug} />
+                      <AttendanceSummary slug={event.slug} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
-      </section>
+      </div>
     </main>
   );
 }

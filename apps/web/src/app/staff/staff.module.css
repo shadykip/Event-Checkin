@@ -1,0 +1,252 @@
+.shell {
+    min-height: 100svh;
+    background: #f4f6f8;
+    color: #182735;
+    font-family: var(--font-geist-sans, system-ui), sans-serif;
+}
+
+.bar {
+    background: #172c3a;
+    color: white;
+}
+
+.barInner,
+.workspace {
+    width: min(100% - 2rem, 64rem);
+    margin-inline: auto;
+}
+
+.barInner {
+    min-height: 4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.brand {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.workspace {
+    padding-block: clamp(1.75rem, 5vw, 3.75rem);
+}
+
+.title {
+    margin: 0 0 1.5rem;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 650;
+    line-height: 1.12;
+    letter-spacing: -0.045em;
+}
+
+.eventList {
+    display: grid;
+    gap: 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.card,
+.loginCard {
+    overflow: hidden;
+    border: 1px solid #d5dee3;
+    border-radius: 1rem;
+    background: white;
+    box-shadow: 0 3px 12px rgb(23 44 58 / 5%);
+}
+
+.loginCard {
+    max-width: 28rem;
+    padding: clamp(1.25rem, 4vw, 2rem);
+    margin-inline: auto;
+}
+
+.eventHeader {
+    padding: 1.4rem clamp(1.1rem, 3vw, 2rem);
+    border-bottom: 1px solid #dce4e8;
+}
+
+.eventName {
+    font-size: clamp(1.3rem, 3vw, 1.65rem);
+    line-height: 1.25;
+    letter-spacing: -0.025em;
+    font-weight: 650;
+}
+
+.muted {
+    margin-top: 0.35rem;
+    color: #506270;
+    font-size: 0.925rem;
+}
+
+.eventBody {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.8fr);
+}
+
+.panel {
+    min-width: 0;
+    padding: clamp(1.1rem, 3vw, 2rem);
+}
+
+.attendance {
+    background: #f7fafb;
+    border-left: 1px solid #dce4e8;
+}
+
+.sectionTitle {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 650;
+}
+
+.stack {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1rem;
+}
+
+.primary,
+.secondary,
+.barButton,
+.textButton {
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    min-height: 2.75rem;
+    border-radius: 0.6rem;
+}
+
+.primary,
+.secondary {
+    padding: 0.65rem 1rem;
+}
+
+.primary {
+    background: #086753;
+    color: white;
+    border: 1px solid #086753;
+}
+
+.primary:hover:enabled {
+    background: #075241;
+}
+
+.secondary {
+    background: white;
+    border: 1px solid #a9b9c3;
+    color: #233c4b;
+}
+
+.secondary:hover:enabled {
+    background: #f2f6f7;
+}
+
+.barButton {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #738793;
+    color: white;
+    background: transparent;
+}
+
+.textButton {
+    width: fit-content;
+    padding: 0.25rem 0;
+    color: #075e50;
+    background: transparent;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.shell button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.shell :is(button, input):focus-visible {
+    outline: 3px solid #2781c2;
+    outline-offset: 3px;
+}
+
+.label {
+    display: grid;
+    gap: 0.4rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.input {
+    width: 100%;
+    min-height: 2.85rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid #9dadb8;
+    border-radius: 0.55rem;
+    color: #182735;
+    background: white;
+    font-size: 1rem;
+    font-weight: 400;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.metrics dt {
+    color: #506270;
+    font-size: 0.875rem;
+}
+
+.metrics dd {
+    margin: 0.15rem 0 0;
+    font-size: 2rem;
+    font-weight: 650;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+
+.feedback {
+    padding: 0.9rem 1rem;
+    border: 1px solid;
+    border-radius: 0.65rem;
+}
+
+.success {
+    color: #10503d;
+    background: #eaf7f0;
+    border-color: #a7d3bc;
+}
+
+.repeat {
+    color: #67440b;
+    background: #fff5dd;
+    border-color: #dfc47e;
+}
+
+.error {
+    color: #852b28;
+    background: #fff1f0;
+    border-color: #e5b2af;
+}
+
+@media (max-width: 680px) {
+    .eventBody {
+        grid-template-columns: 1fr;
+    }
+
+    .attendance {
+        border-left: 0;
+        border-top: 1px solid #dce4e8;
+    }
+
+    .barInner,
+    .workspace {
+        width: min(100% - 1.25rem, 64rem);
+    }
+}
