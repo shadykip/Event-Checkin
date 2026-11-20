@@ -11,9 +11,10 @@ type IssuedInvitation = {
 
 type Props = {
     slug: string;
+    onIssued: () => void;
 };
 
-export default function InviteGuestForm({ slug }: Props) {
+export default function InviteGuestForm({ slug, onIssued }: Props) {
     const [open, setOpen] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
@@ -78,6 +79,7 @@ export default function InviteGuestForm({ slug }: Props) {
                 guestEmail: data.guestEmail,
                 url: new URL(data.passPath, window.location.origin).href,
             });
+            onIssued()
         } catch {
             setError(
                 "Connection interrupted. The invitation may already have been created. " +

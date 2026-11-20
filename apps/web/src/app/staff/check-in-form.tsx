@@ -27,7 +27,12 @@ const checkInErrors: Record<number, string> = {
   404: "This pass is unavailable for this event. Check the invitation and event name.",
 };
 
-export default function CheckInForm({ slug }: { slug: string }) {
+type CheckInFormProps = {
+  slug: string;
+  onConfirmed: () => void;
+};
+
+export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
   const [mode, setMode] = useState<EntryMode>("idle");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -83,6 +88,7 @@ export default function CheckInForm({ slug }: { slug: string }) {
       setAdmission(result);
       setToken("");
       setMode("idle");
+      onConfirmed();
     } catch {
       setError(
         "Connection interrupted. Retry with the same pass to confirm admission.",

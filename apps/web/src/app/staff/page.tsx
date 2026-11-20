@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import AttendanceSummary from "./attendance-summary";
-import CheckInForm from "./check-in-form";
 import styles from "./staff-styles";
-import InviteGuestForm from "./invite-guest-form";
+import EventOperations from "./event-operations";
 
 type StaffEvent = {
   slug: string;
@@ -231,11 +229,7 @@ export default function StaffPage() {
                       <p className={styles.muted}>{event.venue}</p>
                     </header>
 
-                    <div className={styles.eventBody}>
-                      <CheckInForm slug={event.slug} />
-                      <AttendanceSummary slug={event.slug} />
-                    </div>
-                    {event.role === "ORGANIZER" && <InviteGuestForm slug={event.slug} />}
+                    <EventOperations slug={event.slug} role={event.role} />
                   </li>
                 ))}
               </ul>
