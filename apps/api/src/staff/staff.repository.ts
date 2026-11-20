@@ -101,6 +101,7 @@ export class StaffRepository {
         id: true,
         guestName: true,
         guestEmail: true,
+        rsvpStatus: true,
         createdAt: true,
         revokedAt: true,
         checkIns: {

@@ -4,7 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
 import RevokePassButton from "./revoke-pass-button";
 
+
 type GuestStatus = "expected" | "checked_in" | "revoked";
+
+type GuestRsvpStatus = "PENDING" | "ACCEPTED" | "DECLINED";
 
 type Guest = {
     id: string;
@@ -12,6 +15,7 @@ type Guest = {
     guestEmail: string;
     checkedInAt: string | null;
     status: GuestStatus;
+    rsvpStatus: GuestRsvpStatus;
 };
 
 type GuestPage = {
@@ -30,6 +34,18 @@ const statusStyles: Record<GuestStatus, string> = {
     expected: "bg-slate-100 text-slate-700",
     checked_in: "bg-emerald-100 text-emerald-900",
     revoked: "bg-rose-100 text-rose-900",
+};
+
+const rsvpLabels: Record<GuestRsvpStatus, string> = {
+    PENDING: "Awaiting response",
+    ACCEPTED: "Going",
+    DECLINED: "Can’t attend",
+};
+
+const rsvpStyles: Record<GuestRsvpStatus, string> = {
+    PENDING: "bg-slate-100 text-slate-700",
+    ACCEPTED: "bg-teal-50 text-teal-800",
+    DECLINED: "bg-amber-50 text-amber-900",
 };
 
 const admissionTime = new Intl.DateTimeFormat("en-KE", {
@@ -180,7 +196,8 @@ export default function GuestList({
                                         <thead className="border-b border-slate-200 text-slate-600">
                                             <tr>
                                                 <th scope="col" className="py-2 pr-4">Guest</th>
-                                                <th scope="col" className="py-2 pr-4">Status</th>
+                                                <th scope="col" className="py-2 pr-4">RSVP</th>
+                                                <th scope="col" className="py-2 pr-4">Admission</th>
                                                 <th scope="col" className="py-2">Check-in · Nairobi time</th>
                                                 <th scope="col" className="py-2 pl-3">Actions</th>
                                             </tr>
@@ -191,6 +208,13 @@ export default function GuestList({
                                                     <td className="py-3 pr-4">
                                                         <div className="font-semibold">{guest.guestName}</div>
                                                         <div className="break-all text-slate-600">{guest.guestEmail}</div>
+                                                    </td>
+                                                    <td className="py-3 pr-4">
+                                                        <span
+                                                            className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${rsvpStyles[guest.rsvpStatus]}`}
+                                                        >
+                                                            {rsvpLabels[guest.rsvpStatus]}
+                                                        </span>
                                                     </td>
                                                     <td className="py-3 pr-4">
                                                         <span className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${statusStyles[guest.status]}`}>

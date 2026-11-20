@@ -200,6 +200,7 @@ export class StaffService {
           id: row.id,
           guestName: row.guestName,
           guestEmail: row.guestEmail,
+          rsvpStatus: row.rsvpStatus,
           invitedAt: row.createdAt,
           checkedInAt: admission?.checkedInAt ?? null,
           status,
