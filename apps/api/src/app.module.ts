@@ -5,6 +5,8 @@ import { EventsController } from './events/events.controller';
 import { PrismaService } from './prisma/prisma.service';
 import { InvitationsController } from './invitations/invitations.controller';
 import { StaffController } from './staff/staff.controller';
+import { StaffRepository } from './staff/staff.repository';
+import { StaffService } from './staff/staff.service';
 
 @Module({
   controllers: [
@@ -13,6 +15,6 @@ import { StaffController } from './staff/staff.controller';
     InvitationsController,
     StaffController,
   ],
-  providers: [AppService, PrismaService],
+  providers: [AppService, PrismaService, StaffRepository, StaffService],
 })
 export class AppModule {}

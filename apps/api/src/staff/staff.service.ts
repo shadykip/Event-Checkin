@@ -1,0 +1,92 @@
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
+import * as argon2 from 'argon2';
+import type { Prisma } from '../generated/prisma/client';
+import { StaffRepository } from './staff.repository';
+
+const sessionDurationMs = 8 * 60 * 60 * 1000;
+
+function isToken(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+function hashToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+@Injectable()
+export class StaffService {
+  constructor(private readonly repository: StaffRepository) {}
+
+  async login(email: unknown, password: unknown) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !password) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const staff = await this.repository.findAccountByEmail(
+      email.trim().toLowerCase(),
+    );
+
+    if (!staff?.isActive || !(await argon2.verify(staff.passwordHash, password))) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + sessionDurationMs);
+    await this.repository.createSession(staff.id, hashToken(token), expiresAt);
+
+    return { name: staff.name, token, expiresAt };
+  }
+
+  private async requireStaff(tx: Prisma.TransactionClient, token: unknown) {
+    if (!isToken(token)) {
+      throw new UnauthorizedException('Sign in required');
+    }
+
+    const staff = await this.repository.findActiveSession(tx, hashToken(token));
+    if (!staff) throw new UnauthorizedException('Sign in required');
+    return staff;
+  }
+
+  listEvents(sessionToken: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+      return this.repository.listAssignedEvents(tx, staff.id);
+    });
+  }
+
+  checkIn(sessionToken: unknown, slug: string, passToken: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+      const assignment = await this.repository.lockAssignment(tx, staff.id, slug);
+
+      if (!assignment) {
+        throw new ForbiddenException('You are not assigned to this event');
+      }
+      if (!isToken(passToken)) {
+        throw new NotFoundException('Pass unavailable for this event');
+      }
+
+      const invitation = await this.repository.lockValidInvitation(
+        tx,
+        assignment.eventId,
+        hashToken(passToken),
+      );
+      if (!invitation) throw new NotFoundException('Pass unavailable for this event');
+
+      const admission = await this.repository.recordAdmission(tx, invitation.id, staff.id);
+
+      return {
+        status: admission.created ? 'checked_in' : 'already_checked_in',
+        guestName: invitation.guestName,
+        checkedInAt: admission.checkedInAt,
+        checkedInBy: admission.checkedInBy,
+      };
+    });
+  }
+}
