@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prebuild": "prisma generate",
-    "pass:issue": "node scripts/issue-pass.mjs"
+    "pass:issue": "node scripts/issue-pass.mjs",
+    "staff:seed": "node scripts/seed-door-staff.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -27,6 +28,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "argon2": "^0.45.2",
     "dotenv": "^18.0.10",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
