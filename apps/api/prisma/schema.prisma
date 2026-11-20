@@ -40,6 +40,7 @@ model StaffAccount {
   isActive     Boolean                @default(true) @map("is_active")
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   assignments  EventStaffAssignment[]
+  sessions     StaffSession[]
 
   @@map("staff_accounts")
 }
@@ -54,6 +55,16 @@ model EventStaffAssignment {
   @@id([eventId, staffId])
   @@index([staffId])
   @@map("event_staff_assignments")
+}
+
+model StaffSession {
+  tokenHash String       @id @map("token_hash") @db.Char(64)
+  staffId   String       @map("staff_id") @db.Uuid
+  expiresAt DateTime     @map("expires_at") @db.Timestamptz(3)
+  staff     StaffAccount @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@map("staff_sessions")
 }
 
 generator client {
