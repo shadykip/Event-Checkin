@@ -59,7 +59,9 @@ export class StaffRepository {
   }
 
   async lockValidInvitation(tx: DbClient, eventId: string, tokenHash: string) {
-    const [invitation] = await tx.$queryRaw<{ id: string; guestName: string }[]>`
+    const [invitation] = await tx.$queryRaw<
+      { id: string; guestName: string }[]
+    >`
       SELECT id, guest_name AS "guestName"
       FROM invitations
       WHERE event_id = ${eventId}::uuid
@@ -89,5 +91,10 @@ export class StaffRepository {
       checkedInAt: admission.checkedInAt,
       checkedInBy: admission.staff.name,
     };
+  }
+  deleteSession(tokenHash: string) {
+    return this.db.staffSession.deleteMany({
+      where: { tokenHash },
+    });
   }
 }

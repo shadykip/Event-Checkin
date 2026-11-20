@@ -81,12 +81,44 @@ export default function StaffPage() {
     }
   }
 
+  async function signOut() {
+    setSubmitting(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/staff/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Sign-out failed");
+      setScreen({ status: "login" });
+    } catch {
+      setMessage("Could not confirm sign-out. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-stone-50 px-5 py-14 text-stone-950">
       <section className="mx-auto max-w-lg rounded-xl border border-stone-200 bg-white p-7">
         <h1 className="text-2xl font-semibold">
           {screen.status === "ready" ? "Your assigned events" : "Staff sign-in"}
         </h1>
+
+        {screen.status === "ready" && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={signOut}
+              disabled={submitting}
+              className="text-sm font-medium underline underline-offset-4 disabled:opacity-60"
+            >
+              {submitting ? "Signing out…" : "Sign out"}
+            </button>
+
+            {message && (
+              <p role="alert" className="mt-2 text-sm text-red-700">{message}</p>
+            )}
+          </div>
+        )}
 
         {screen.status === "loading" && (
           <p role="status" className="mt-5">Checking your session…</p>

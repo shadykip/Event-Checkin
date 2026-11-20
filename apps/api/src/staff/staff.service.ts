@@ -24,7 +24,11 @@ export class StaffService {
   constructor(private readonly repository: StaffRepository) {}
 
   async login(email: unknown, password: unknown) {
-    if (typeof email !== 'string' || typeof password !== 'string' || !password) {
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      !password
+    ) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -32,7 +36,10 @@ export class StaffService {
       email.trim().toLowerCase(),
     );
 
-    if (!staff?.isActive || !(await argon2.verify(staff.passwordHash, password))) {
+    if (
+      !staff?.isActive ||
+      !(await argon2.verify(staff.passwordHash, password))
+    ) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -63,7 +70,11 @@ export class StaffService {
   checkIn(sessionToken: unknown, slug: string, passToken: unknown) {
     return this.repository.transaction(async (tx) => {
       const staff = await this.requireStaff(tx, sessionToken);
-      const assignment = await this.repository.lockAssignment(tx, staff.id, slug);
+      const assignment = await this.repository.lockAssignment(
+        tx,
+        staff.id,
+        slug,
+      );
 
       if (!assignment) {
         throw new ForbiddenException('You are not assigned to this event');
@@ -77,9 +88,14 @@ export class StaffService {
         assignment.eventId,
         hashToken(passToken),
       );
-      if (!invitation) throw new NotFoundException('Pass unavailable for this event');
+      if (!invitation)
+        throw new NotFoundException('Pass unavailable for this event');
 
-      const admission = await this.repository.recordAdmission(tx, invitation.id, staff.id);
+      const admission = await this.repository.recordAdmission(
+        tx,
+        invitation.id,
+        staff.id,
+      );
 
       return {
         status: admission.created ? 'checked_in' : 'already_checked_in',
@@ -88,5 +104,11 @@ export class StaffService {
         checkedInBy: admission.checkedInBy,
       };
     });
+  }
+
+  async logout(sessionToken: unknown): Promise<void> {
+    if (isToken(sessionToken)) {
+      await this.repository.deleteSession(hashToken(sessionToken));
+    }
   }
 }

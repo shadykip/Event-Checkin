@@ -55,4 +55,21 @@ export class StaffController {
   ) {
     return this.staff.checkIn(request.cookies?.[cookieName], slug, token);
   }
+
+  @Post('logout')
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  async logout(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<void> {
+    await this.staff.logout(request.cookies?.[cookieName]);
+
+    response.clearCookie(cookieName, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    });
+  }
 }
