@@ -67,6 +67,7 @@ export default function GuestList({
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState("");
     const [query, setQuery] = useState("");
+    const [rsvp, setRsvp] = useState("");
     const [page, setPage] = useState(1);
     const [retry, setRetry] = useState(0);
 
@@ -76,7 +77,7 @@ export default function GuestList({
         error?: string;
     } | null>(null);
 
-    const requestKey = JSON.stringify([slug, query, page, version, retry]);
+    const requestKey = JSON.stringify([slug, query, rsvp, page, version, retry]);
     const current = result?.key === requestKey ? result : null;
 
     useEffect(() => {
@@ -85,6 +86,7 @@ export default function GuestList({
 
         async function load() {
             const params = new URLSearchParams({ page: String(page) });
+            if (rsvp) params.set("rsvp", rsvp);
             if (query) params.set("q", query);
 
             try {
@@ -111,7 +113,7 @@ export default function GuestList({
 
         void load();
         return () => controller.abort();
-    }, [open, slug, query, page, requestKey]);
+    }, [open, slug, query, rsvp, page, requestKey]);
 
     function search(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -137,7 +139,7 @@ export default function GuestList({
             {open && (
                 <div className="mt-5 space-y-4">
                     <form onSubmit={search} className="flex flex-wrap items-end gap-2">
-                        <label className={`${styles.label} min-w-0 flex-1`}>
+                        <label className={`${styles.label} min-w-0 basis-full sm:flex-1`}>
                             Search guests
                             <input
                                 type="search"
@@ -148,12 +150,26 @@ export default function GuestList({
                                 onChange={(event) => setDraft(event.target.value)}
                             />
                         </label>
+                        <label className={styles.label}>
+                            RSVP
+                            <select className={styles.input} value={rsvp} onChange={(event) => {
+                                setRsvp(event.target.value);
+                                setQuery(draft.trim());
+                                setPage(1);
+                            }}>
+                                <option value="">All responses</option>
+                                <option value="ACCEPTED">Going</option>
+                                <option value="DECLINED">Can’t attend</option>
+                                <option value="PENDING">Awaiting response</option>
+                            </select>
+                        </label>
                         <button type="submit" className={styles.primary}>Search</button>
-                        {query && (
+                        {(query || rsvp) && (
                             <button
                                 type="button"
                                 className={styles.secondary}
                                 onClick={() => {
+                                    setRsvp("");
                                     setDraft("");
                                     setQuery("");
                                     setPage(1);
@@ -187,7 +203,7 @@ export default function GuestList({
                         <>
                             {current.data.items.length === 0 ? (
                                 <p role="status" className={styles.muted}>
-                                    {query ? "No guests match your search." : "No invitations on this page."}
+                                    {query || rsvp ? "No guests match your filters." : "No invitations on this page."}
                                 </p>
                             ) : (
                                 <div className="overflow-x-auto">

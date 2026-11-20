@@ -150,6 +150,7 @@ export class StaffService {
     slug: string,
     rawPage: unknown,
     rawQuery?: unknown,
+    rsvp?: unknown,
   ) {
     return this.repository.transaction(async (tx) => {
       const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
@@ -162,6 +163,10 @@ export class StaffService {
       }
 
       const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+
+      if (rsvp !== undefined && rsvp !== 'PENDING' && rsvp !== 'ACCEPTED' && rsvp !== 'DECLINED') {
+        throw new BadRequestException('RSVP must be PENDING, ACCEPTED or DECLINED.');
+      }
 
       const pageText = rawPage === undefined ? '1' : rawPage;
       if (typeof pageText !== 'string' || !/^[1-9]\d*$/.test(pageText)) {
@@ -183,6 +188,7 @@ export class StaffService {
         skip,
         pageSize + 1,
         query,
+        rsvp,
       );
 
       const items = rows.slice(0, pageSize).map((row) => {

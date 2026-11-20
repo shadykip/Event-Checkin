@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '../generated/prisma/client';
+import { Prisma, type RsvpStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type DbClient = Prisma.TransactionClient;
@@ -80,12 +80,14 @@ export class StaffRepository {
     skip: number,
     take: number,
     query = '',
+    rsvpStatus?: RsvpStatus,
   ) {
     const term = query.replace(/[\\%_]/g, '\\$&');
 
     return tx.invitation.findMany({
       where: {
         eventId,
+        ...(rsvpStatus && { rsvpStatus }),
         ...(term
           ? {
               OR: [

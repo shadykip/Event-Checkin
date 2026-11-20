@@ -69,12 +69,14 @@ export class StaffController {
     @Param('slug') slug: string,
     @Query('page') page: unknown,
     @Query('q') query: unknown,
+    @Query('rsvp') rsvp?: unknown,
   ) {
     return this.staff.listInvitations(
       request.cookies?.[cookieName],
       slug,
       page,
       query,
+      rsvp,
     );
   }
 
