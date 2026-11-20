@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import CheckInForm from "./check-in-form";
 
 type StaffEvent = {
   slug: string;
@@ -142,6 +143,7 @@ export default function StaffPage() {
                 <li key={event.slug} className="rounded-lg border border-stone-200 p-4">
                   <h2 className="font-semibold">{event.name}</h2>
                   <p className="mt-1 text-sm text-stone-600">{event.venue}</p>
+                  <CheckInForm slug={event.slug} />
                 </li>
               ))}
             </ul>
