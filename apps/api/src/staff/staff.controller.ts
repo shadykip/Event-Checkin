@@ -60,6 +60,24 @@ export class StaffController {
   attendance(@Req() request: Request, @Param('slug') slug: string) {
     return this.staff.getAttendance(request.cookies?.[cookieName], slug);
   }
+
+  @Post('events/:slug/invitations')
+  @HttpCode(201)
+  @Header('Cache-Control', 'no-store')
+  issueInvitation(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('guestName') guestName: unknown,
+    @Body('guestEmail') guestEmail: unknown,
+  ) {
+    return this.staff.issueInvitation(
+      request.cookies?.[cookieName],
+      slug,
+      guestName,
+      guestEmail,
+    );
+  }
+
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')

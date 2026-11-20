@@ -54,23 +54,62 @@ export class StaffRepository {
     return staff;
   }
 
-  listAssignedEvents(tx: DbClient, staffId: string) {
-    return tx.event.findMany({
-      where: { staffAssignments: { some: { staffId } } },
-      select: { name: true, slug: true, venue: true, startsAt: true },
-      orderBy: [{ startsAt: 'asc' }, { slug: 'asc' }],
+  async listAssignedEvents(tx: DbClient, staffId: string) {
+    const assignments = await tx.eventStaffAssignment.findMany({
+      where: { staffId },
+      select: {
+        role: true,
+        event: {
+          select: {
+            name: true,
+            slug: true,
+            venue: true,
+            startsAt: true,
+          },
+        },
+      },
+      orderBy: [{ event: { startsAt: 'asc' } }, { event: { slug: 'asc' } }],
     });
+
+    return assignments.map(({ event, role }) => ({ ...event, role }));
   }
 
   async lockAssignment(tx: DbClient, staffId: string, slug: string) {
-    const [assignment] = await tx.$queryRaw<{ eventId: string }[]>`
-      SELECT a.event_id AS "eventId"
-      FROM event_staff_assignments a
-      JOIN events e ON e.id = a.event_id
-      WHERE e.slug = ${slug} AND a.staff_id = ${staffId}::uuid
-      FOR SHARE OF a, e
-    `;
+    const [assignment] = await tx.$queryRaw<
+      { eventId: string; role: 'DOOR_STAFF' | 'ORGANIZER' }[]
+    >`
+    SELECT a.event_id AS "eventId", a.role::text AS role
+    FROM event_staff_assignments a
+    JOIN events e ON e.id = a.event_id
+    WHERE e.slug = ${slug}
+      AND a.staff_id = ${staffId}::uuid
+    FOR SHARE OF a, e
+  `;
+
     return assignment;
+  }
+
+  async insertInvitation(
+    tx: DbClient,
+    eventId: string,
+    guestName: string,
+    guestEmail: string,
+    tokenHash: string,
+  ) {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+    INSERT INTO invitations (id, event_id, guest_name, guest_email, token_hash)
+    VALUES (
+      gen_random_uuid(),
+      ${eventId}::uuid,
+      ${guestName},
+      ${guestEmail},
+      ${tokenHash}
+    )
+    ON CONFLICT (event_id, guest_email) DO NOTHING
+    RETURNING id
+  `;
+
+    return rows[0];
   }
 
   async lockValidInvitation(tx: DbClient, eventId: string, tokenHash: string) {

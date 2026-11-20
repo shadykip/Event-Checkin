@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -85,7 +87,68 @@ export class StaffService {
       throw new ForbiddenException('You are not assigned to this event');
     }
 
-    return { staffId: staff.id, eventId: assignment.eventId };
+    return {
+      staffId: staff.id,
+      eventId: assignment.eventId,
+      role: assignment.role,
+    };
+  }
+
+  issueInvitation(
+    sessionToken: unknown,
+    slug: string,
+    rawName: unknown,
+    rawEmail: unknown,
+  ) {
+    return this.repository.transaction(async (tx) => {
+      const assignment = await this.requireAssignment(tx, sessionToken, slug);
+
+      if (assignment.role !== 'ORGANIZER') {
+        throw new ForbiddenException(
+          'Only an organizer for this event can issue invitations.',
+        );
+      }
+
+      const guestName = typeof rawName === 'string' ? rawName.trim() : '';
+      const guestEmail =
+        typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+      if (!guestName || guestName.length > 200) {
+        throw new BadRequestException(
+          'Enter a guest name of 1 to 200 characters.',
+        );
+      }
+
+      if (
+        guestEmail.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)
+      ) {
+        throw new BadRequestException('Enter a valid guest email address.');
+      }
+
+      const token = randomBytes(32).toString('base64url');
+
+      const invitation = await this.repository.insertInvitation(
+        tx,
+        assignment.eventId,
+        guestName,
+        guestEmail,
+        hashToken(token),
+      );
+
+      if (!invitation) {
+        throw new ConflictException(
+          'This guest already has an invitation for this event.',
+        );
+      }
+
+      return {
+        id: invitation.id,
+        guestName,
+        guestEmail,
+        passPath: `/pass#${token}`,
+      };
+    });
   }
 
   checkIn(sessionToken: unknown, slug: string, passToken: string) {
@@ -95,19 +158,6 @@ export class StaffService {
         sessionToken,
         slug,
       );
-      // const staff = await this.requireStaff(tx, sessionToken);
-      // const assignment = await this.repository.lockAssignment(
-      //   tx,
-      //   staff.id,
-      //   slug,
-      // );
-
-      // if (!assignment) {
-      //   throw new ForbiddenException('You are not assigned to this event');
-      // }
-      // if (!isToken(passToken)) {
-      //   throw new NotFoundException('Pass unavailable for this event');
-      // }
 
       const invitation = await this.repository.lockValidInvitation(
         tx,

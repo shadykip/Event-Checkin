@@ -4,11 +4,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import AttendanceSummary from "./attendance-summary";
 import CheckInForm from "./check-in-form";
 import styles from "./staff-styles";
+import InviteGuestForm from "./invite-guest-form";
 
 type StaffEvent = {
   slug: string;
   name: string;
   venue: string;
+  startsAt: string;
+  role: "DOOR_STAFF" | "ORGANIZER";
 };
 
 type Screen =
@@ -16,6 +19,8 @@ type Screen =
   | { status: "login" }
   | { status: "ready"; events: StaffEvent[] }
   | { status: "error" };
+
+
 
 async function loadStaffEvents(signal?: AbortSignal): Promise<Screen> {
   const response = await fetch("/api/staff/events", {
@@ -230,6 +235,7 @@ export default function StaffPage() {
                       <CheckInForm slug={event.slug} />
                       <AttendanceSummary slug={event.slug} />
                     </div>
+                    {event.role === "ORGANIZER" && <InviteGuestForm slug={event.slug} />}
                   </li>
                 ))}
               </ul>
