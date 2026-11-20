@@ -22,7 +22,10 @@ type GuestPage = {
     items: Guest[];
     page: number;
     hasNextPage: boolean;
+    rsvpSummary: Record<GuestRsvpStatus, number>;
 };
+
+const summaryOrder: GuestRsvpStatus[] = ["ACCEPTED", "DECLINED", "PENDING"];
 
 const statusLabels: Record<GuestStatus, string> = {
     expected: "Expected",
@@ -79,6 +82,7 @@ export default function GuestList({
 
     const requestKey = JSON.stringify([slug, query, rsvp, page, version, retry]);
     const current = result?.key === requestKey ? result : null;
+    const summary = result?.data?.rsvpSummary;
 
     useEffect(() => {
         if (!open) return;
@@ -138,6 +142,46 @@ export default function GuestList({
 
             {open && (
                 <div className="mt-5 space-y-4">
+                    {summary && (
+                        <fieldset className="min-w-0">
+                            <legend className="mb-2 text-sm font-semibold text-slate-800">
+                                RSVP · Active invitations
+                            </legend>
+
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                {summaryOrder.map((status) => {
+                                    const selected = rsvp === status;
+
+                                    return (
+                                        <button
+                                            key={status}
+                                            type="button"
+                                            aria-pressed={selected}
+                                            onClick={() => {
+                                                setRsvp(status);
+                                                setQuery(draft.trim());
+                                                setPage(1);
+                                            }}
+                                            className={[
+                                                "flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left",
+                                                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700",
+                                                selected
+                                                    ? "border-teal-700 bg-teal-50 text-teal-950"
+                                                    : "border-slate-200 bg-white text-slate-800 hover:border-teal-500",
+                                            ].join(" ")}
+                                        >
+                                            <span className="text-sm font-medium">
+                                                {rsvpLabels[status]}
+                                            </span>
+                                            <span className="text-2xl font-semibold tabular-nums">
+                                                {summary[status]}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </fieldset>
+                    )}
                     <form onSubmit={search} className="flex flex-wrap items-end gap-2">
                         <label className={`${styles.label} min-w-0 basis-full sm:flex-1`}>
                             Search guests

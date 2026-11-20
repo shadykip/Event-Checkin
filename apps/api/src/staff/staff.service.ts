@@ -164,8 +164,15 @@ export class StaffService {
 
       const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
 
-      if (rsvp !== undefined && rsvp !== 'PENDING' && rsvp !== 'ACCEPTED' && rsvp !== 'DECLINED') {
-        throw new BadRequestException('RSVP must be PENDING, ACCEPTED or DECLINED.');
+      if (
+        rsvp !== undefined &&
+        rsvp !== 'PENDING' &&
+        rsvp !== 'ACCEPTED' &&
+        rsvp !== 'DECLINED'
+      ) {
+        throw new BadRequestException(
+          'RSVP must be PENDING, ACCEPTED or DECLINED.',
+        );
       }
 
       const pageText = rawPage === undefined ? '1' : rawPage;
@@ -213,7 +220,23 @@ export class StaffService {
         };
       });
 
-      return { items, page, pageSize, hasNextPage: rows.length > pageSize };
+      const counts = await this.repository.countActiveInvitationsByRsvp(
+        tx,
+        eventId,
+      );
+
+      const rsvpSummary = { ACCEPTED: 0, DECLINED: 0, PENDING: 0 };
+      for (const row of counts) {
+        rsvpSummary[row.rsvpStatus] = row._count._all;
+      }
+
+      return {
+        items,
+        page,
+        pageSize,
+        hasNextPage: rows.length > pageSize,
+        rsvpSummary,
+      };
     });
   }
 

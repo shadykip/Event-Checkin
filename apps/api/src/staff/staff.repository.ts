@@ -201,6 +201,14 @@ export class StaffRepository {
     return invitation;
   }
 
+  countActiveInvitationsByRsvp(tx: DbClient, eventId: string) {
+    return tx.invitation.groupBy({
+      by: ['rsvpStatus'],
+      where: { eventId, revokedAt: null },
+      _count: { _all: true },
+    });
+  }
+
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },
