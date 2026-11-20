@@ -11,8 +11,10 @@ model Event {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  invitations      Invitation[]
-  staffAssignments EventStaffAssignment[]
+  invitations         Invitation[]
+  staffAssignments    EventStaffAssignment[]
+  checkIn             CheckIn?               @relation(fields: [checkInInvitationId], references: [invitationId])
+  checkInInvitationId String?                @db.Uuid
 
   @@map("events")
 }
@@ -26,7 +28,8 @@ model Invitation {
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  event    Event     @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  checkIns CheckIn[]
 
   @@unique([eventId, guestEmail])
   @@map("invitations")
@@ -41,8 +44,22 @@ model StaffAccount {
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   assignments  EventStaffAssignment[]
   sessions     StaffSession[]
+  checkIns     CheckIn[]
 
   @@map("staff_accounts")
+}
+
+model CheckIn {
+  invitationId String   @id @map("invitation_id") @db.Uuid
+  staffId      String   @map("staff_id") @db.Uuid
+  checkedInAt  DateTime @default(now()) @map("checked_in_at") @db.Timestamptz(3)
+
+  invitation Invitation   @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+  staff      StaffAccount @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  events     Event[]
+
+  @@index([staffId])
+  @@map("check_ins")
 }
 
 model EventStaffAssignment {
