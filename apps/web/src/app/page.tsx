@@ -1,5 +1,6 @@
 
 import { Suspense } from "react";
+import Link from "next/link";
 type EventSummary = {
   id: string;
   name: string;
@@ -66,7 +67,14 @@ async function EventList() {
           key={event.id}
           className="rounded-xl border border-stone-200 bg-white p-6"
         >
-          <h2 className="text-2xl font-semibold">{event.name}</h2>
+          <h2 className="text-2xl font-semibold">
+            <Link
+              href={`/events/${encodeURIComponent(event.slug)}`}
+              className="underline-offset-4 hover:underline focus-visible:underline"
+            >
+              {event.name}
+            </Link>
+          </h2>
           <p className="mt-2 text-stone-700">{event.venue}</p>
           <p className="mt-4 text-sm text-stone-600">
             <time dateTime={event.startsAt}>
