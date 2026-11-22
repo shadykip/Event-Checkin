@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { Prisma, type RsvpStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { parseTicketTier } from './ticket-tier-input';
+
+import {
+  committedTickets,
+  inventoryTime,
+  lockTicketTier,
+} from '../events/ticket-inventory';
 
 type DbClient = Prisma.TransactionClient;
 
@@ -593,13 +599,25 @@ export class StaffRepository {
     });
   }
 
-  updateTicketTier(
+  async updateTicketTier(
     tx: DbClient,
     eventId: string,
     id: string,
     version: number,
     data: ReturnType<typeof parseTicketTier>,
   ) {
+    const found = await lockTicketTier(tx, eventId, id);
+    if (!found) return { count: 0 };
+
+    const now = await inventoryTime(tx);
+    const committed = await committedTickets(tx, id, now);
+
+    if (data.capacity < committed) {
+      throw new ConflictException(
+        `Capacity must cover the ${committed} paid or currently reserved tickets.`,
+      );
+    }
+
     return tx.ticketTier.updateMany({
       where: { id, eventId, version },
       data: { ...data, version: { increment: 1 } },

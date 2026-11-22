@@ -11,6 +11,8 @@ import { InvitationsRepository } from './invitations/invitations.repository';
 import { InvitationsService } from './invitations/invitations.service';
 import { EventsRepository } from './events/events.repository';
 import { EventsService } from './events/events.service';
+import { TicketCheckoutController } from './events/ticket-checkout.controller';
+import { TicketCheckoutRepository } from './events/ticket-checkout.repository';
 
 @Module({
   controllers: [
@@ -18,6 +20,7 @@ import { EventsService } from './events/events.service';
     EventsController,
     InvitationsController,
     StaffController,
+    TicketCheckoutController,
   ],
   providers: [
     AppService,
@@ -28,6 +31,7 @@ import { EventsService } from './events/events.service';
     InvitationsService,
     EventsRepository,
     EventsService,
+    TicketCheckoutRepository,
   ],
 })
 export class AppModule {}
