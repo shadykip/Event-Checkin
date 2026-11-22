@@ -81,8 +81,8 @@ export default function GuestPassPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-stone-50 px-5 py-14 text-stone-950">
-      <article className="mx-auto max-w-lg rounded-xl border border-stone-200 bg-white p-7">
+    <main className="min-h-screen bg-stone-50 px-5 py-14 text-stone-950 print:min-h-0 print:bg-white print:p-0 print:text-black">
+      <article className="mx-auto max-w-lg rounded-xl border border-stone-200 bg-white p-7 print:break-inside-avoid print:rounded-none print:border-0 print:p-4">
         <h1 className="text-2xl font-semibold">Your invitation</h1>
 
         <div aria-live="polite" className="mt-5">
@@ -115,7 +115,17 @@ export default function GuestPassPage() {
                   </dd>
                 </div>
               </dl>
-              <AddToCalendar event={view.invitation.event} />
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-2 print:hidden">
+                <AddToCalendar event={view.invitation.event} />
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+                >
+                  Print pass
+                </button>
+              </div>
 
               <figure className="mt-7 border-t border-stone-200 pt-6 text-center">
                 <QRCodeSVG
@@ -133,12 +143,14 @@ export default function GuestPassPage() {
                 </figcaption>
               </figure>
 
-              <GuestRsvp
-                key={view.token}
-                token={view.token}
-                initialStatus={view.invitation.rsvpStatus}
-                onUnavailable={() => setView({ status: "unavailable" })}
-              />
+              <div className="print:hidden">
+                <GuestRsvp
+                  key={view.token}
+                  token={view.token}
+                  initialStatus={view.invitation.rsvpStatus}
+                  onUnavailable={() => setView({ status: "unavailable" })}
+                />
+              </div>
             </>
           )}
         </div>
