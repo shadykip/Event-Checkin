@@ -50,6 +50,7 @@ model StaffAccount {
   email        String                 @unique
   passwordHash String                 @map("password_hash")
   isActive     Boolean                @default(true) @map("is_active")
+  canCreateEvents Boolean @default(false) @map("can_create_events")
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   assignments  EventStaffAssignment[]
   sessions     StaffSession[]

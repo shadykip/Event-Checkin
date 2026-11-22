@@ -1,52 +1,37 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
-import EventOperations from "./event-operations";
 
-type StaffEvent = {
-  slug: string;
-  name: string;
-  venue: string;
-  startsAt: string;
-  role: "DOOR_STAFF" | "ORGANIZER";
+import StaffDashboard, { type StaffEvent } from "./staff-dashboard";
+
+type DashboardData = {
+  canCreateEvents: boolean;
+  events: StaffEvent[];
 };
 
 type Screen =
   | { status: "loading" }
   | { status: "login" }
-  | { status: "ready"; events: StaffEvent[] }
+  | ({ status: "ready"; loadedAt: number } & DashboardData)
   | { status: "error" };
 
-const staffEventDate = new Intl.DateTimeFormat("en-KE", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-  timeZone: "Africa/Nairobi",
-});
-
-
 async function loadStaffEvents(signal?: AbortSignal): Promise<Screen> {
-  const response = await fetch("/api/staff/events", {
+  const response = await fetch("/api/staff/events?view=dashboard", {
     cache: "no-store",
     signal,
   });
 
-  if (response.status === 401) {
-    return { status: "login" };
-  }
+  if (response.status === 401) return { status: "login" };
+  if (!response.ok) throw new Error("Could not load the staff dashboard.");
 
-  if (!response.ok) {
-    throw new Error("Could not load assigned events.");
-  }
 
-  const events: StaffEvent[] = await response.json();
-  return { status: "ready", events };
+  const data: DashboardData = await response.json();
+  return { status: "ready", ...data, loadedAt: Date.now() };
 }
+
+
+
 
 export default function StaffPage() {
   const [screen, setScreen] = useState<Screen>({ status: "loading" });
@@ -139,22 +124,44 @@ export default function StaffPage() {
     }
   }
 
+  if (screen.status === "ready") {
+    return (
+      <Suspense fallback={<p className="p-6">Loading dashboard…</p>}>
+        <StaffDashboard
+          events={screen.events}
+          canCreateEvents={screen.canCreateEvents}
+          signingOut={submitting}
+          onSignOut={signOut}
+          loadedAt={screen.loadedAt}
+          message={message}
+          onCreated={(created) => {
+            setScreen((current) => {
+              if (current.status !== "ready") return current;
+
+              const events = [
+                ...current.events.filter((event) => event.slug !== created.slug),
+                created,
+              ].sort(
+                (a, b) =>
+                  Date.parse(a.startsAt) - Date.parse(b.startsAt) ||
+                  a.slug.localeCompare(b.slug),
+              );
+
+              return { ...current, events };
+            });
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <main className={styles.shell}>
       <header className={styles.bar}>
         <div className={styles.barInner}>
           <span className={styles.brand}>Event check-in</span>
 
-          {screen.status === "ready" && (
-            <button
-              type="button"
-              className={styles.barButton}
-              onClick={signOut}
-              disabled={submitting}
-            >
-              {submitting ? "Signing out…" : "Sign out"}
-            </button>
-          )}
+
         </div>
       </header>
 
@@ -215,58 +222,7 @@ export default function StaffPage() {
           </section>
         )}
 
-        {screen.status === "ready" && (
-          <>
-            <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                Staff dashboard
-              </h1>
-              <p className="text-sm font-medium text-slate-600">
-                {screen.events.length} assigned {screen.events.length === 1 ? "event" : "events"}
-              </p>
-            </div>
 
-            {message && (
-              <p role="alert" className={`${styles.feedback} ${styles.error}`}>
-                {message}
-              </p>
-            )}
-
-            {screen.events.length === 0 ? (
-              <div className={`${styles.card} ${styles.panel}`}>
-                You have no event assignments yet. Ask your organizer to assign
-                you to an event.
-              </div>
-            ) : (
-              <ul className={styles.eventList}>
-                {screen.events.map((event) => (
-                  <li key={event.slug} className={styles.card}>
-                    <header className={styles.eventHeader}>
-                      <div className="min-w-0">
-                        <h2 className={styles.eventName}>{event.name}</h2>
-                        <p className="mt-2 break-words text-sm leading-6 text-slate-200">
-                          {event.venue}
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-slate-200">
-                          <time dateTime={event.startsAt}>
-                            {staffEventDate.format(new Date(event.startsAt))}
-                          </time>
-                          {" · Nairobi time"}
-                        </p>
-                      </div>
-
-                      <span className="w-fit shrink-0 rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white">
-                        {event.role === "ORGANIZER" ? "Organizer" : "Door staff"}
-                      </span>
-                    </header>
-
-                    <EventOperations slug={event.slug} role={event.role} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
       </div>
     </main>
   );

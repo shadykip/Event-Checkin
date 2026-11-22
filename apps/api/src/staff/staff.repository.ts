@@ -61,16 +61,67 @@ export class StaffRepository {
     return totals;
   }
   async findActiveSession(tx: DbClient, tokenHash: string) {
-    const [staff] = await tx.$queryRaw<{ id: string }[]>`
-      SELECT s.id
-      FROM staff_sessions ss
-      JOIN staff_accounts s ON s.id = ss.staff_id
-      WHERE ss.token_hash = ${tokenHash}
-        AND ss.expires_at > clock_timestamp()
-        AND s.is_active
-      FOR SHARE OF ss, s
-    `;
+    const [staff] = await tx.$queryRaw<
+      { id: string; canCreateEvents: boolean }[]
+    >`
+    SELECT
+      s.id,
+      s.can_create_events AS "canCreateEvents"
+    FROM staff_sessions ss
+    JOIN staff_accounts s ON s.id = ss.staff_id
+    WHERE ss.token_hash = ${tokenHash}
+      AND ss.expires_at > clock_timestamp()
+      AND s.is_active
+    FOR SHARE OF ss, s
+  `;
+
     return staff;
+  }
+
+  async createAssignedEvent(
+    tx: DbClient,
+    staffId: string,
+    input: {
+      name: string;
+      slug: string;
+      venue: string;
+      startsAt: Date;
+    },
+  ) {
+    const inserted = await tx.event.createMany({
+      data: [input],
+      skipDuplicates: true,
+    });
+
+    if (inserted.count === 0) return null;
+
+    const event = await tx.event.findUniqueOrThrow({
+      where: { slug: input.slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        venue: true,
+        startsAt: true,
+      },
+    });
+
+    const assignment = await tx.eventStaffAssignment.create({
+      data: {
+        eventId: event.id,
+        staffId,
+        role: 'ORGANIZER',
+      },
+      select: { role: true },
+    });
+
+    return {
+      name: event.name,
+      slug: event.slug,
+      venue: event.venue,
+      startsAt: event.startsAt,
+      role: assignment.role,
+    };
   }
 
   async listAssignedEvents(tx: DbClient, staffId: string) {

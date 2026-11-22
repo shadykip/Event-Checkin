@@ -43,8 +43,31 @@ export class StaffController {
 
   @Get('events')
   @Header('Cache-Control', 'no-store')
-  events(@Req() request: Request) {
-    return this.staff.listEvents(request.cookies?.[cookieName]);
+  events(@Req() request: Request, @Query('view') view?: string) {
+    const session = request.cookies?.[cookieName];
+
+    if (view === 'dashboard') {
+      return this.staff.getDashboard(session);
+    }
+
+    return this.staff.listEvents(session);
+  }
+
+  @Post('events')
+  @HttpCode(201)
+  @Header('Cache-Control', 'no-store')
+  createEvent(
+    @Req() request: Request,
+    @Body('name') name: unknown,
+    @Body('venue') venue: unknown,
+    @Body('startsAt') startsAt: unknown,
+  ) {
+    return this.staff.createEvent(
+      request.cookies?.[cookieName],
+      name,
+      venue,
+      startsAt,
+    );
   }
 
   @Post('events/:slug/check-ins')

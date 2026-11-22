@@ -58,6 +58,96 @@ export class StaffService {
     return { name: staff.name, token, expiresAt };
   }
 
+  getDashboard(sessionToken: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+      const events = await this.repository.listAssignedEvents(tx, staff.id);
+
+      return {
+        canCreateEvents: staff.canCreateEvents,
+        events,
+      };
+    });
+  }
+
+  createEvent(
+    sessionToken: unknown,
+    rawName: unknown,
+    rawVenue: unknown,
+    rawStartsAt: unknown,
+  ) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+
+      if (!staff.canCreateEvents) {
+        throw new ForbiddenException(
+          'Your account does not have permission to create events.',
+        );
+      }
+
+      const name = typeof rawName === 'string' ? rawName.trim() : '';
+      const venue = typeof rawVenue === 'string' ? rawVenue.trim() : '';
+
+      if (!name || name.length > 160) {
+        throw new BadRequestException(
+          'Enter an event name of 1 to 160 characters.',
+        );
+      }
+
+      if (!venue || venue.length > 200) {
+        throw new BadRequestException('Enter a venue of 1 to 200 characters.');
+      }
+
+      // The web form sends Nairobi wall time, independent of the device timezone.
+      if (
+        typeof rawStartsAt !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(rawStartsAt)
+      ) {
+        throw new BadRequestException('Enter a valid Nairobi date and time.');
+      }
+
+      const startsAt = new Date(`${rawStartsAt}:00+03:00`);
+      const wallTime = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
+
+      if (
+        !Number.isFinite(startsAt.getTime()) ||
+        wallTime.toISOString().slice(0, 16) !== rawStartsAt
+      ) {
+        throw new BadRequestException('Enter a valid Nairobi date and time.');
+      }
+
+      // Include the local date so recurring events can reuse the same name.
+      const baseSlug = name
+        .normalize('NFKD')
+        .replace(/\p{M}/gu, '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '');
+
+      if (!baseSlug) {
+        throw new BadRequestException(
+          'Include a letter or number in the event name.',
+        );
+      }
+
+      const slug = `${baseSlug}-${rawStartsAt.slice(0, 10)}`;
+      const event = await this.repository.createAssignedEvent(tx, staff.id, {
+        name,
+        slug,
+        venue,
+        startsAt,
+      });
+
+      if (!event) {
+        throw new ConflictException(
+          'That event address is already in use for this date. Add a distinguishing detail to the name.',
+        );
+      }
+
+      return event;
+    });
+  }
+
   private async requireStaff(tx: Prisma.TransactionClient, token: unknown) {
     if (!isToken(token)) {
       throw new UnauthorizedException('Sign in required');
