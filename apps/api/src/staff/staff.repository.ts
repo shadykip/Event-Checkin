@@ -34,10 +34,29 @@ export class StaffRepository {
     });
   }
 
-  createSession(staffId: string, tokenHash: string, expiresAt: Date) {
-    return this.db.staffSession.create({
-      data: { staffId, tokenHash, expiresAt },
-      select: { staffId: true },
+  createSession(
+    staffId: string,
+    verifiedPasswordHash: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ) {
+    return this.transaction(async (tx) => {
+      const [account] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id
+      FROM staff_accounts
+      WHERE id = ${staffId}::uuid
+        AND password_hash = ${verifiedPasswordHash}
+        AND is_active
+      FOR SHARE
+    `;
+
+      if (!account) return false;
+
+      await tx.staffSession.create({
+        data: { staffId, tokenHash, expiresAt },
+      });
+
+      return true;
     });
   }
 
@@ -466,7 +485,60 @@ export class StaffRepository {
       },
     });
   }
+  async issuePasswordReset(email: string, tokenHash: string) {
+    const [account] = await this.db.$queryRaw<{ email: string }[]>`
+    UPDATE staff_accounts
+    SET reset_token_hash = ${tokenHash},
+        reset_expires_at = clock_timestamp() + interval '30 minutes',
+        reset_requested_at = clock_timestamp()
+    WHERE email = ${email}
+      AND is_active
+      AND (
+        reset_requested_at IS NULL
+        OR reset_requested_at <= clock_timestamp() - interval '60 seconds'
+      )
+    RETURNING email
+  `;
 
+    return account;
+  }
+
+  async hasValidPasswordReset(tokenHash: string) {
+    const [result] = await this.db.$queryRaw<{ valid: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM staff_accounts
+      WHERE reset_token_hash = ${tokenHash}
+        AND reset_expires_at > clock_timestamp()
+        AND is_active
+    ) AS valid
+  `;
+
+    return result.valid;
+  }
+
+  consumePasswordReset(tokenHash: string, passwordHash: string) {
+    return this.transaction(async (tx) => {
+      const [account] = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE staff_accounts
+      SET password_hash = ${passwordHash},
+          reset_token_hash = NULL,
+          reset_expires_at = NULL
+      WHERE reset_token_hash = ${tokenHash}
+        AND reset_expires_at > clock_timestamp()
+        AND is_active
+      RETURNING id
+    `;
+
+      if (!account) return false;
+
+      await tx.staffSession.deleteMany({
+        where: { staffId: account.id },
+      });
+
+      return true;
+    });
+  }
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },

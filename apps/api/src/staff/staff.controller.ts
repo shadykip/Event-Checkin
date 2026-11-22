@@ -296,6 +296,23 @@ export class StaffController {
     );
   }
 
+  @Post('password/forgot')
+  @HttpCode(202)
+  @Header('Cache-Control', 'no-store')
+  requestPasswordReset(@Body('email') email: unknown) {
+    return this.staff.requestPasswordReset(email);
+  }
+
+  @Post('password/reset')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  resetPassword(
+    @Body('token') token: unknown,
+    @Body('password') password: unknown,
+  ) {
+    return this.staff.resetPassword(token, password);
+  }
+
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')

@@ -1,9 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useState, type FormEvent } from "react";
-import styles from "./staff-styles";
-
+import { Suspense, useEffect, useState } from "react";
 import StaffDashboard, { type StaffEvent } from "./staff-dashboard";
+import styles from "./staff-styles";
 
 type DashboardData = {
   canCreateEvents: boolean;
@@ -12,41 +11,62 @@ type DashboardData = {
 
 type Screen =
   | { status: "loading" }
-  | { status: "login" }
-  | ({ status: "ready"; loadedAt: number } & DashboardData)
-  | { status: "error" };
+  | { status: "error" }
+  | ({ status: "ready"; loadedAt: number } & DashboardData);
 
-async function loadStaffEvents(signal?: AbortSignal): Promise<Screen> {
-  const response = await fetch("/api/staff/events?view=dashboard", {
-    cache: "no-store",
-    signal,
-  });
+function redirectToLogin() {
+  const next = window.location.pathname + window.location.search;
+  const query = new URLSearchParams({ next });
 
-  if (response.status === 401) return { status: "login" };
-  if (!response.ok) throw new Error("Could not load the staff dashboard.");
-
-
-  const data: DashboardData = await response.json();
-  return { status: "ready", ...data, loadedAt: Date.now() };
+  window.location.replace(`/staff/login?${query.toString()}`);
 }
 
-
-
+function LoadingScreen() {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-slate-100 px-4">
+      <p role="status" className="text-sm font-medium text-slate-600">
+        Opening staff workspace…
+      </p>
+    </main>
+  );
+}
 
 export default function StaffPage() {
   const [screen, setScreen] = useState<Screen>({ status: "loading" });
   const [message, setMessage] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function checkSession() {
+    async function loadDashboard() {
       try {
-        const next = await loadStaffEvents(controller.signal);
+        const response = await fetch("/api/staff/events?view=dashboard", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted) return;
+
+        if (response.status === 401) {
+          redirectToLogin();
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Dashboard request failed.");
+        }
+
+        const data: DashboardData = await response.json();
 
         if (!controller.signal.aborted) {
-          setScreen(next);
+          setScreen({
+            status: "ready",
+            events: data.events,
+            canCreateEvents: data.canCreateEvents,
+            loadedAt: Date.now(),
+          });
         }
       } catch {
         if (!controller.signal.aborted) {
@@ -55,175 +75,85 @@ export default function StaffPage() {
       }
     }
 
-    void checkSession();
-
+    void loadDashboard();
     return () => controller.abort();
-  }, []);
+  }, [attempt]);
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting) return;
+  function retry() {
+    setScreen({ status: "loading" });
+    setAttempt((current) => current + 1);
+  }
 
-    const form = new FormData(event.currentTarget);
+  function updateEvent(saved: StaffEvent) {
+    setScreen((current) => {
+      if (current.status !== "ready") return current;
 
-    setSubmitting(true);
-    setMessage("");
+      const events = [
+        ...current.events.filter((event) => event.slug !== saved.slug),
+        saved,
+      ].sort(
+        (a, b) =>
+          Date.parse(a.startsAt) - Date.parse(b.startsAt) ||
+          a.slug.localeCompare(b.slug),
+      );
 
-    try {
-      const response = await fetch("/api/staff/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: form.get("email"),
-          password: form.get("password"),
-        }),
-      });
-
-      if (response.status === 401) {
-        setMessage("Incorrect email or password.");
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error("Sign-in request failed.");
-      }
-
-      const next = await loadStaffEvents();
-      setScreen(next);
-
-      if (next.status === "login") {
-        setMessage("Your session could not be opened. Please sign in again.");
-      }
-    } catch {
-      setMessage("Could not reach the staff service. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+      return { ...current, events };
+    });
   }
 
   async function signOut() {
-    if (submitting) return;
+    if (signingOut) return;
 
-    setSubmitting(true);
+    setSigningOut(true);
     setMessage("");
 
     try {
-      const response = await fetch("/api/staff/logout", {
-        method: "POST",
-      });
+      const response = await fetch("/api/staff/logout", { method: "POST" });
 
-      if (!response.ok) {
+      if (!response.ok && response.status !== 401) {
         throw new Error("Sign-out failed.");
       }
 
-      setScreen({ status: "login" });
+      window.location.replace("/staff/login");
     } catch {
       setMessage("Could not confirm sign-out. Please try again.");
-    } finally {
-      setSubmitting(false);
+      setSigningOut(false);
     }
   }
 
-  if (screen.status === "ready") {
+  if (screen.status === "loading") {
+    return <LoadingScreen />;
+  }
+
+  if (screen.status === "error") {
     return (
-      <Suspense fallback={<p className="p-6">Loading dashboard…</p>}>
-        <StaffDashboard
-          events={screen.events}
-          canCreateEvents={screen.canCreateEvents}
-          signingOut={submitting}
-          onSignOut={signOut}
-          loadedAt={screen.loadedAt}
-          message={message}
-          onCreated={(created) => {
-            setScreen((current) => {
-              if (current.status !== "ready") return current;
-
-              const events = [
-                ...current.events.filter((event) => event.slug !== created.slug),
-                created,
-              ].sort(
-                (a, b) =>
-                  Date.parse(a.startsAt) - Date.parse(b.startsAt) ||
-                  a.slug.localeCompare(b.slug),
-              );
-
-              return { ...current, events };
-            });
-          }}
-        />
-      </Suspense>
+      <main className="grid min-h-dvh place-items-center bg-slate-100 px-4">
+        <section className={styles.loginCard}>
+          <h1 className="text-xl font-semibold text-slate-950">
+            Workspace unavailable
+          </h1>
+          <p role="alert" className="my-4 text-sm text-slate-600">
+            Your assigned events could not be loaded.
+          </p>
+          <button type="button" className={styles.primary} onClick={retry}>
+            Try again
+          </button>
+        </section>
+      </main>
     );
   }
 
   return (
-    <main className={styles.shell}>
-      <header className={styles.bar}>
-        <div className={styles.barInner}>
-          <span className={styles.brand}>Event check-in</span>
-
-
-        </div>
-      </header>
-
-      <div className={styles.workspace}>
-        {screen.status === "loading" && (
-          <p role="status">Checking your staff session…</p>
-        )}
-
-        {screen.status === "error" && (
-          <div role="alert" className={`${styles.feedback} ${styles.error}`}>
-            Could not load your events. Refresh the page to try again.
-          </div>
-        )}
-
-        {screen.status === "login" && (
-          <section className={styles.loginCard} aria-labelledby="staff-login-title">
-            <h1 id="staff-login-title" className={styles.title}>
-              Staff sign-in
-            </h1>
-
-            <form onSubmit={signIn} className={styles.stack}>
-              <label className={styles.label}>
-                Email address
-                <input
-                  className={styles.input}
-                  name="email"
-                  type="email"
-                  autoComplete="username"
-                  required
-                />
-              </label>
-
-              <label className={styles.label}>
-                Password
-                <input
-                  className={styles.input}
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-
-              {message && (
-                <p role="alert" className={`${styles.feedback} ${styles.error}`}>
-                  {message}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                className={styles.primary}
-                disabled={submitting}
-              >
-                {submitting ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
-          </section>
-        )}
-
-
-      </div>
-    </main>
+    <Suspense fallback={<LoadingScreen />}>
+      <StaffDashboard
+        events={screen.events}
+        canCreateEvents={screen.canCreateEvents}
+        loadedAt={screen.loadedAt}
+        signingOut={signingOut}
+        onSignOut={signOut}
+        message={message}
+        onCreated={updateEvent}
+      />
+    </Suspense>
   );
 }

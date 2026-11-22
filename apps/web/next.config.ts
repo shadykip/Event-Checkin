@@ -77,6 +77,14 @@ const nextConfig: NextConfig = {
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/team/:staffId`,
       },
       {
+        source: "/api/staff/password/forgot",
+        destination: new URL("/staff/password/forgot", api).href,
+      },
+      {
+        source: "/api/staff/password/reset",
+        destination: new URL("/staff/password/reset", api).href,
+      },
+      {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,
       },

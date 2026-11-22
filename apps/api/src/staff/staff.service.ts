@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,7 +13,10 @@ import * as argon2 from 'argon2';
 import type { Prisma, RsvpStatus } from '../generated/prisma/client';
 import { parseGuestCsv, validateGuest } from './guest-import';
 import { guestRosterCsv } from './guest-roster-csv';
-import { sendInvitationEmail } from './invitation-mailer';
+import {
+  sendInvitationEmail,
+  sendPasswordResetEmail,
+} from './invitation-mailer';
 import { StaffRepository, type AdmissionStatus } from './staff.repository';
 import { prepareEventBanner } from './event-banner';
 import { parseEventDetails } from './event-details';
@@ -31,6 +35,7 @@ function hashToken(token: string) {
 @Injectable()
 export class StaffService {
   constructor(private readonly repository: StaffRepository) {}
+  private readonly logger = new Logger(StaffService.name);
 
   async login(email: unknown, password: unknown) {
     if (
@@ -55,9 +60,80 @@ export class StaffService {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + sessionDurationMs);
 
-    await this.repository.createSession(staff.id, hashToken(token), expiresAt);
+    const created = await this.repository.createSession(
+      staff.id,
+      staff.passwordHash,
+      hashToken(token),
+      expiresAt,
+    );
+
+    if (!created) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
 
     return { name: staff.name, token, expiresAt };
+  }
+
+  async requestPasswordReset(rawEmail: unknown) {
+    const email =
+      typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+    if (email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const token = randomBytes(32).toString('base64url');
+      const account = await this.repository.issuePasswordReset(
+        email,
+        hashToken(token),
+      );
+
+      if (account) {
+        // SMTP delivery time should not reveal whether an account exists.
+        void sendPasswordResetEmail(account.email, token).catch(() => {
+          this.logger.warn('Staff password reset email delivery failed.');
+        });
+      }
+    }
+
+    return {
+      message:
+        'If an active account matches that email, a password reset link will arrive shortly.',
+    };
+  }
+
+  async resetPassword(rawToken: unknown, rawPassword: unknown) {
+    const invalidLink =
+      'This reset link is invalid or has expired. Request a new one.';
+
+    if (!isToken(rawToken)) {
+      throw new BadRequestException(invalidLink);
+    }
+
+    if (
+      typeof rawPassword !== 'string' ||
+      rawPassword.length < 8 ||
+      rawPassword.length > 128
+    ) {
+      throw new BadRequestException('Use a password of 15 to 128 characters.');
+    }
+
+    const tokenHash = hashToken(rawToken);
+
+    // Avoid an expensive password hash for an invalid or expired token.
+    if (!(await this.repository.hasValidPasswordReset(tokenHash))) {
+      throw new BadRequestException(invalidLink);
+    }
+
+    const passwordHash = await argon2.hash(rawPassword, {
+      type: argon2.argon2id,
+    });
+
+    // Check validity again during the write so two submissions can only reset once.
+    if (
+      !(await this.repository.consumePasswordReset(tokenHash, passwordHash))
+    ) {
+      throw new BadRequestException(invalidLink);
+    }
+
+    return { message: 'Password updated. Sign in with your new password.' };
   }
 
   getDashboard(sessionToken: unknown) {

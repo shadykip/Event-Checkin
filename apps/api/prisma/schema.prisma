@@ -68,6 +68,10 @@ model StaffAccount {
   sessions     StaffSession[]
   checkIns     CheckIn[]
 
+  resetTokenHash   String?   @unique @map("reset_token_hash") @db.Char(64)
+  resetExpiresAt   DateTime? @map("reset_expires_at") @db.Timestamptz(3)
+  resetRequestedAt DateTime? @map("reset_requested_at") @db.Timestamptz(3)
+
   @@map("staff_accounts")
 }
 

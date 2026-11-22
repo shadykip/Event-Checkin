@@ -63,3 +63,30 @@ export async function sendInvitationEmail(
     );
   }
 }
+
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+): Promise<void> {
+  const base = process.env.WEB_PUBLIC_URL ?? 'http://localhost:3002';
+  const link = new URL('/staff/reset-password', base);
+  link.hash = token;
+
+  await transport.sendMail({
+    from: {
+      name: 'Event Check-in',
+      address: 'invitations@example.test',
+    },
+    to: { address: email, name: '' },
+    subject: 'Reset your Event Check-in staff password',
+    text: [
+      'A password reset was requested for your Event Check-in staff account.',
+      '',
+      'Open this link to choose a new password:',
+      link.href,
+      '',
+      'The link expires in 30 minutes and can be used once.',
+      'If you did not request this, you can ignore this email.',
+    ].join('\n'),
+  });
+}
