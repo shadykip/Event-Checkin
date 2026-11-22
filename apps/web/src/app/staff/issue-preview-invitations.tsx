@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import styles from "./staff-styles";
+import EmailIssuedPasses from "./email-issued-passes";
 
 type Guest = {
     record: number;
@@ -32,6 +33,7 @@ export default function IssuePreviewInvitations({
 }: Props) {
     const running = useRef(false);
     const [busy, setBusy] = useState(false);
+    const [emailBusy, setEmailBusy] = useState(false);
     const [passes, setPasses] = useState<IssuedPass[]>([]);
     const [existing, setExisting] = useState<number[]>([]);
     const [error, setError] = useState("");
@@ -46,7 +48,7 @@ export default function IssuePreviewInvitations({
     );
 
     async function issue() {
-        if (running.current || remaining.length === 0) return;
+        if (running.current || emailBusy || remaining.length === 0) return;
 
         running.current = true;
         setBusy(true);
@@ -145,7 +147,7 @@ export default function IssuePreviewInvitations({
                         type="button"
                         className={styles.primary}
                         onClick={issue}
-                        disabled={busy}
+                        disabled={busy || emailBusy}
                     >
                         {busy
                             ? "Issuing invitations…"
@@ -187,7 +189,15 @@ export default function IssuePreviewInvitations({
                     ))}
                 </ul>
             )}
-
+            <EmailIssuedPasses
+                slug={slug}
+                passes={passes}
+                disabled={busy}
+                onBusyChange={(sending) => {
+                    setEmailBusy(sending);
+                    onBusyChange(sending);
+                }}
+            />
             {copyMessage && <p role="status" className="text-sm">{copyMessage}</p>}
         </section>
     );
