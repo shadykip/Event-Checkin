@@ -19,9 +19,18 @@ model Event {
   checkIn             CheckIn?               @relation(fields: [checkInInvitationId], references: [invitationId])
   checkInInvitationId String?                @db.Uuid
 
+  ticketAllocation TicketAllocation?
+
   @@map("events")
 }
 
+model TicketAllocation {
+  eventId  String @id @map("event_id") @db.Uuid
+  capacity Int
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_allocations")
+}
 
 model EventBanner {
   eventId String @id @map("event_id") @db.Uuid
@@ -51,6 +60,7 @@ model Invitation {
 
   rsvpStatus      RsvpStatus @default(PENDING) @map("rsvp_status")
   rsvpRespondedAt DateTime?  @map("rsvp_responded_at") @db.Timestamptz(3)
+  isPublicTicket Boolean @default(false) @map("is_public_ticket")
 
   @@unique([eventId, guestEmail])
   @@map("invitations")

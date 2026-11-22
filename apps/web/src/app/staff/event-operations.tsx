@@ -8,6 +8,7 @@ import GuestList from "./guest-list";
 import InviteGuestForm from "./invite-guest-form";
 import styles from "./staff-styles";
 import EventTeam from "./event-team";
+import TicketAllocation from "./ticket-allocation";
 
 type Props = {
     slug: string;
@@ -27,6 +28,7 @@ export default function EventOperations({ slug, role }: Props) {
                 <CheckInForm slug={slug} onConfirmed={refreshAttendance} />
                 <AttendanceSummary key={attendanceVersion} slug={slug} />
             </div>
+            {role === "ORGANIZER" && <TicketAllocation key={slug} slug={slug} />}
             {role === "ORGANIZER" && <EventTeam key={slug} slug={slug} />}
 
             {role === "ORGANIZER" && (

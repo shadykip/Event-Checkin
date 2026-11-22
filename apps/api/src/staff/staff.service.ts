@@ -741,6 +741,33 @@ export class StaffService {
     });
   }
 
+  getTicketAllocation(session: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, session, slug);
+      const allocation = await this.repository.getTicketAllocation(tx, eventId);
+      return allocation ?? { capacity: 0 };
+    });
+  }
+
+  saveTicketAllocation(session: unknown, slug: string, capacity: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, session, slug);
+
+      if (
+        typeof capacity !== 'number' ||
+        !Number.isSafeInteger(capacity) ||
+        capacity < 0 ||
+        capacity > 100000
+      ) {
+        throw new BadRequestException(
+          'Enter a whole number from 0 to 100,000.',
+        );
+      }
+
+      return this.repository.saveTicketAllocation(tx, eventId, capacity);
+    });
+  }
+
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {
       await this.repository.deleteSession(hashToken(sessionToken));

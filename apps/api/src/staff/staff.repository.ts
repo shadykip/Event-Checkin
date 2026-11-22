@@ -539,6 +539,22 @@ export class StaffRepository {
       return true;
     });
   }
+
+  getTicketAllocation(tx: DbClient, eventId: string) {
+    return tx.ticketAllocation.findUnique({
+      where: { eventId },
+      select: { capacity: true },
+    });
+  }
+
+  saveTicketAllocation(tx: DbClient, eventId: string, capacity: number) {
+    return tx.ticketAllocation.upsert({
+      where: { eventId },
+      create: { eventId, capacity },
+      update: { capacity },
+      select: { capacity: true },
+    });
+  }
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },

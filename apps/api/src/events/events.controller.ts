@@ -1,37 +1,29 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-
-const eventFields = {
-  id: true,
-  name: true,
-  slug: true,
-  venue: true,
-  startsAt: true,
-} as const;
+import { Body, Controller, Get, Header, Param, Post } from '@nestjs/common';
+import { EventsService } from './events.service';
 
 @Controller('events')
 export class EventsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly events: EventsService) {}
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   list() {
-    return this.prisma.event.findMany({
-      select: eventFields,
-      orderBy: [{ startsAt: 'asc' }, { slug: 'asc' }],
-    });
+    return this.events.list();
   }
 
   @Get(':slug')
-  async findBySlug(@Param('slug') slug: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { slug },
-      select: eventFields,
-    });
+  @Header('Cache-Control', 'no-store')
+  findBySlug(@Param('slug') slug: string) {
+    return this.events.findBySlug(slug);
+  }
 
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    return event;
+  @Post(':slug/tickets')
+  @Header('Cache-Control', 'no-store')
+  claim(
+    @Param('slug') slug: string,
+    @Body('guestName') name: unknown,
+    @Body('guestEmail') email: unknown,
+  ) {
+    return this.events.claim(slug, name, email);
   }
 }

@@ -1,12 +1,14 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
+
 type EventSummary = {
   id: string;
   name: string;
   slug: string;
   venue: string;
   startsAt: string;
+  ticketStatus: "closed" | "available" | "sold_out";
 };
 
 const eventDate = new Intl.DateTimeFormat("en-KE", {
@@ -35,20 +37,22 @@ async function getEvents(): Promise<EventSummary[]> {
 
 export default function EventsPage() {
   return (
-    <main className="min-h-screen bg-stone-50 px-5 py-14 text-stone-950 sm:py-20">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-4xl font-semibold tracking-tight">Events</h1>
+    <main className="min-h-dvh bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+          <span className="text-lg font-bold tracking-tight">Event check-in</span>
+          <Link href="/staff/login" className="rounded-lg px-3 py-2 text-sm font-semibold text-teal-800 hover:underline">
+            Staff sign-in
+          </Link>
+        </div>
+      </header>
 
-        <Suspense
-          fallback={
-            <p role="status" className="mt-6 text-stone-600">
-              Loading events…
-            </p>
-          }
-        >
+      <section className="mx-auto max-w-6xl px-5 py-10 sm:py-14">
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Discover events</h1>
+        <Suspense fallback={<p role="status" className="mt-8">Loading events…</p>}>
           <EventList />
         </Suspense>
-      </div>
+      </section>
     </main>
   );
 }
@@ -61,27 +65,31 @@ async function EventList() {
   }
 
   return (
-    <ul className="mt-8 space-y-4">
+    <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {events.map((event) => (
-        <li
-          key={event.id}
-          className="rounded-xl border border-stone-200 bg-white p-6"
-        >
-          <h2 className="text-2xl font-semibold">
-            <Link
-              href={`/events/${encodeURIComponent(event.slug)}`}
-              className="underline-offset-4 hover:underline focus-visible:underline"
-            >
-              {event.name}
-            </Link>
-          </h2>
-          <p className="mt-2 text-stone-700">{event.venue}</p>
-          <p className="mt-4 text-sm text-stone-600">
-            <time dateTime={event.startsAt}>
-              {eventDate.format(new Date(event.startsAt))}
+        <li key={event.id}>
+          <Link
+            href={`/events/${encodeURIComponent(event.slug)}`}
+            className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:border-teal-500 focus-visible:outline-2 focus-visible:outline-teal-700"
+          >
+            <time dateTime={event.startsAt} className="text-sm font-semibold text-teal-800">
+              {eventDate.format(new Date(event.startsAt))} EAT
             </time>
-            {" · Nairobi time"}
-          </p>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight group-hover:text-teal-800">
+              {event.name}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">{event.venue}</p>
+            <div className="mt-auto flex items-center justify-between gap-3 pt-6">
+              <span className="text-sm font-semibold">
+                {event.ticketStatus === "available"
+                  ? "Free tickets"
+                  : event.ticketStatus === "sold_out"
+                    ? "Sold out"
+                    : "Registration closed"}
+              </span>
+              <span aria-hidden="true" className="text-teal-800">→</span>
+            </div>
+          </Link>
         </li>
       ))}
     </ul>

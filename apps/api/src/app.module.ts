@@ -9,6 +9,8 @@ import { StaffRepository } from './staff/staff.repository';
 import { StaffService } from './staff/staff.service';
 import { InvitationsRepository } from './invitations/invitations.repository';
 import { InvitationsService } from './invitations/invitations.service';
+import { EventsRepository } from './events/events.repository';
+import { EventsService } from './events/events.service';
 
 @Module({
   controllers: [
@@ -24,6 +26,8 @@ import { InvitationsService } from './invitations/invitations.service';
     StaffService,
     InvitationsRepository,
     InvitationsService,
+    EventsRepository,
+    EventsService,
   ],
 })
 export class AppModule {}

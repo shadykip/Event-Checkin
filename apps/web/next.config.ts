@@ -85,6 +85,14 @@ const nextConfig: NextConfig = {
         destination: new URL("/staff/password/reset", api).href,
       },
       {
+        source: "/api/events/:slug/tickets",
+        destination: `${api.replace(/\/$/, "")}/events/:slug/tickets`,
+      },
+      {
+        source: "/api/staff/events/:slug/ticket-allocation",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-allocation`,
+      },
+      {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,
       },

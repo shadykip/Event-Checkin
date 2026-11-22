@@ -296,6 +296,26 @@ export class StaffController {
     );
   }
 
+  @Get('events/:slug/ticket-allocation')
+  @Header('Cache-Control', 'no-store')
+  getTicketAllocation(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.getTicketAllocation(request.cookies?.[cookieName], slug);
+  }
+
+  @Put('events/:slug/ticket-allocation')
+  @Header('Cache-Control', 'no-store')
+  saveTicketAllocation(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('capacity') capacity: unknown,
+  ) {
+    return this.staff.saveTicketAllocation(
+      request.cookies?.[cookieName],
+      slug,
+      capacity,
+    );
+  }
+
   @Post('password/forgot')
   @HttpCode(202)
   @Header('Cache-Control', 'no-store')
