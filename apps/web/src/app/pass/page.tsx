@@ -32,6 +32,22 @@ const eventDate = new Intl.DateTimeFormat("en-KE", {
 export default function GuestPassPage() {
   const [view, setView] = useState<View>({ status: "loading" });
 
+  const pageTitle =
+    view.status === "ready"
+      ? `${view.invitation.event.name} – Guest Pass`
+      : "Guest Pass – Event Check-in";
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = pageTitle;
+
+    return () => {
+      if (document.title === pageTitle) {
+        document.title = previousTitle;
+      }
+    };
+  }, [pageTitle]);
+
   useEffect(() => {
     let activeRequest: AbortController | undefined;
 
