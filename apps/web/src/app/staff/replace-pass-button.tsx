@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import styles from "./staff-styles";
+import EmailPassButton from "./email-pass-button";
 
 type Props = {
     slug: string;
-    guest: { id: string; guestName: string };
+    guest: { id: string; guestName: string; guestEmail: string };
 };
 
 export default function ReplacePassButton({ slug, guest }: Props) {
@@ -79,7 +80,17 @@ export default function ReplacePassButton({ slug, guest }: Props) {
                         onFocus={(event) => event.currentTarget.select()}
                     />
                 </label>
-                <p className="text-xs text-slate-700">Copy the link before closing.</p>
+                <p className="text-xs text-slate-700">
+                    Email the replacement to {guest.guestEmail}, or copy it before closing.
+                </p>
+
+                <EmailPassButton
+                    key={link}
+                    slug={slug}
+                    passUrl={link}
+                    guestEmail={guest.guestEmail}
+                    label="Email replacement pass"
+                />
                 <div className="flex flex-wrap gap-3">
                     <button type="button" className={styles.textButton} onClick={copy}>
                         Copy link

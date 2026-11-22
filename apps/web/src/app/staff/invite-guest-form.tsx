@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
+import EmailPassButton from "./email-pass-button";
 
 type IssuedInvitation = {
     guestName: string;
@@ -21,7 +22,6 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
     const [issued, setIssued] = useState<IssuedInvitation | null>(null);
     const [copyStatus, setCopyStatus] = useState("");
     const [emailState, setEmailState] = useState<"idle" | "sending" | "sent">("idle");
-    const [emailMessage, setEmailMessage] = useState("");
     const linkInput = useRef<HTMLInputElement>(null);
 
     function close() {
@@ -30,7 +30,6 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
         setError("");
         setCopyStatus("");
         setEmailState("idle");
-        setEmailMessage("");
     }
 
     async function submit(event: FormEvent<HTMLFormElement>) {
@@ -94,47 +93,6 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
         }
     }
 
-    async function emailLink() {
-        if (!issued || emailState !== "idle") return;
-
-        setEmailState("sending");
-        setEmailMessage("");
-
-        try {
-            const response = await fetch(
-                `/api/staff/events/${encodeURIComponent(slug)}/invitations/email`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        token: new URL(issued.url).hash.slice(1),
-                    }),
-                    cache: "no-store",
-                },
-            );
-
-            if (!response.ok) {
-                const detail = await response.json().catch(() => null);
-                throw new Error(
-                    typeof detail?.message === "string"
-                        ? detail.message
-                        : "Email delivery could not be confirmed.",
-                );
-            }
-
-            setEmailState("sent");
-            setEmailMessage(`Email accepted for ${issued.guestEmail}.`);
-        } catch (cause) {
-            setEmailState("idle");
-            setEmailMessage(
-                cause instanceof TypeError
-                    ? "Connection interrupted. Check the inbox before retrying."
-                    : cause instanceof Error
-                        ? cause.message
-                        : "Email delivery could not be confirmed.",
-            );
-        }
-    }
 
     async function copyLink() {
         if (!issued) return;
@@ -182,19 +140,13 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                     </label>
 
                     <div className="flex flex-wrap gap-3">
-                        <button
-                            type="button"
-                            className={styles.primary}
-                            onClick={emailLink}
-                            disabled={emailState !== "idle"}
-                        >
-                            {emailState === "sending"
-                                ? "Sending…"
-                                : emailState === "sent"
-                                    ? "Email sent"
-                                    : "Email invitation"}
-                        </button>
-
+                        <EmailPassButton
+                            key={issued.url}
+                            slug={slug}
+                            passUrl={issued.url}
+                            guestEmail={issued.guestEmail}
+                            label="Email invitation"
+                        />
                         <button
                             type="button"
                             className={styles.secondary}
@@ -207,14 +159,13 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                             type="button"
                             className={styles.secondary}
                             onClick={close}
-                            disabled={emailState === "sending"}
                         >
                             Done
                         </button>
                     </div>
 
                     <div role="status" aria-live="polite" className={styles.muted}>
-                        {emailMessage && <p>{emailMessage}</p>}
+
                         {copyStatus && <p>{copyStatus}</p>}
                     </div>
                     <p role="status" className={styles.muted}>{copyStatus}</p>
