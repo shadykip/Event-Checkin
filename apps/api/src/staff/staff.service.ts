@@ -15,6 +15,7 @@ import { guestRosterCsv } from './guest-roster-csv';
 import { sendInvitationEmail } from './invitation-mailer';
 import { StaffRepository, type AdmissionStatus } from './staff.repository';
 import { prepareEventBanner } from './event-banner';
+import { parseEventDetails } from './event-details';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const rosterPageSize = 25;
@@ -78,6 +79,7 @@ export class StaffService {
     rawStartsAt: unknown,
     rawDescription?: unknown,
     bannerFile?: Express.Multer.File,
+    rawDescriptionHtml?: unknown,
   ) {
     return this.repository.transaction(async (tx) => {
       const staff = await this.requireStaff(tx, sessionToken);
@@ -88,39 +90,15 @@ export class StaffService {
         );
       }
 
-      const name = typeof rawName === 'string' ? rawName.trim() : '';
-      const venue = typeof rawVenue === 'string' ? rawVenue.trim() : '';
+      const details = parseEventDetails({
+        name: rawName,
+        venue: rawVenue,
+        startsAt: rawStartsAt,
+        description: rawDescription,
+        descriptionHtml: rawDescriptionHtml,
+      });
 
-      if (!name || name.length > 160) {
-        throw new BadRequestException(
-          'Enter an event name of 1 to 160 characters.',
-        );
-      }
-
-      if (!venue || venue.length > 200) {
-        throw new BadRequestException('Enter a venue of 1 to 200 characters.');
-      }
-
-      // The web form sends Nairobi wall time, independent of the device timezone.
-      if (
-        typeof rawStartsAt !== 'string' ||
-        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(rawStartsAt)
-      ) {
-        throw new BadRequestException('Enter a valid Nairobi date and time.');
-      }
-
-      const startsAt = new Date(`${rawStartsAt}:00+03:00`);
-      const wallTime = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
-
-      if (
-        !Number.isFinite(startsAt.getTime()) ||
-        wallTime.toISOString().slice(0, 16) !== rawStartsAt
-      ) {
-        throw new BadRequestException('Enter a valid Nairobi date and time.');
-      }
-
-      // Include the local date so recurring events can reuse the same name.
-      const baseSlug = name
+      const baseSlug = details.name
         .normalize('NFKD')
         .replace(/\p{M}/gu, '')
         .toLowerCase()
@@ -133,28 +111,12 @@ export class StaffService {
         );
       }
 
-      const slug = `${baseSlug}-${rawStartsAt.slice(0, 10)}`;
-
-      if (rawDescription !== undefined && typeof rawDescription !== 'string') {
-        throw new BadRequestException('Enter a valid event description.');
-      }
-
-      const description =
-        typeof rawDescription === 'string' ? rawDescription.trim() : '';
-
-      if (description.length > 3000) {
-        throw new BadRequestException(
-          'Keep the event description within 3,000 characters.',
-        );
-      }
-
+      const localDate = String(rawStartsAt).slice(0, 10);
       const bannerImage = await prepareEventBanner(bannerFile);
+
       const event = await this.repository.createAssignedEvent(tx, staff.id, {
-        name,
-        slug,
-        venue,
-        startsAt,
-        description: description || undefined,
+        ...details,
+        slug: `${baseSlug}-${localDate}`,
         bannerImage,
       });
 
@@ -165,6 +127,38 @@ export class StaffService {
       }
 
       return event;
+    });
+  }
+
+  updateEvent(
+    sessionToken: unknown,
+    slug: string,
+    rawName: unknown,
+    rawVenue: unknown,
+    rawStartsAt: unknown,
+    rawDescription?: unknown,
+    bannerFile?: Express.Multer.File,
+    rawDescriptionHtml?: unknown,
+  ) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const details = parseEventDetails({
+        name: rawName,
+        venue: rawVenue,
+        startsAt: rawStartsAt,
+        description: rawDescription,
+        descriptionHtml: rawDescriptionHtml,
+      });
+
+      const bannerImage = await prepareEventBanner(bannerFile);
+
+      return this.repository.updateEventDetails(
+        tx,
+        eventId,
+        details,
+        bannerImage,
+      );
     });
   }
 
@@ -606,6 +600,69 @@ export class StaffService {
 
     await sendInvitationEmail(delivery.invitation, delivery.token);
     return { accepted: true };
+  }
+
+  getEventTeam(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      return this.repository.listEventTeam(tx, eventId);
+    });
+  }
+
+  assignDoorStaff(sessionToken: unknown, slug: string, rawEmail: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const email =
+        typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new BadRequestException('Enter a valid staff email address.');
+      }
+
+      const staff = await this.repository.findActiveStaffByEmail(tx, email);
+
+      if (!staff) {
+        throw new NotFoundException(
+          'No active staff account was found for that email address.',
+        );
+      }
+
+      const result = await this.repository.assignDoorStaff(
+        tx,
+        eventId,
+        staff.id,
+      );
+
+      return {
+        message:
+          result.count === 1
+            ? 'Door staff assigned to this event.'
+            : 'This staff member is already assigned to this event.',
+        members: await this.repository.listEventTeam(tx, eventId),
+      };
+    });
+  }
+
+  removeDoorStaff(sessionToken: unknown, slug: string, staffId: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const result = await this.repository.removeDoorStaff(
+        tx,
+        eventId,
+        staffId,
+      );
+
+      if (result.count === 0) {
+        throw new NotFoundException(
+          'No removable door-staff assignment was found for this event.',
+        );
+      }
+
+      return {
+        message: 'Door staff removed from this event.',
+        members: await this.repository.listEventTeam(tx, eventId),
+      };
+    });
   }
 
   async logout(sessionToken: unknown): Promise<void> {

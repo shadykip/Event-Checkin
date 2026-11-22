@@ -5,19 +5,34 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { StaffEvent } from "./staff-dashboard";
 import styles from "./staff-styles";
 
+import EventDescriptionEditor from "./event-description-editor";
+
+function nairobiInputValue(iso: string) {
+    const date = new Date(iso);
+    return new Date(date.getTime() + 3 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 16);
+}
+
 const maxBannerBytes = 5 * 1024 * 1024;
 const acceptedTypes = ["image/jpeg", "image/png", "image/webp"];
 
 export default function CreateEventForm({
+    initialEvent,
     onCreated,
+    onCancel,
 }: {
+    initialEvent?: StaffEvent;
     onCreated: (event: StaffEvent) => void;
+    onCancel?: () => void;
 }) {
     const fileInput = useRef<HTMLInputElement>(null);
     const [previewUrl, setPreviewUrl] = useState("");
     const [fileError, setFileError] = useState("");
     const [submitError, setSubmitError] = useState("");
     const [saving, setSaving] = useState(false);
+    const editing = Boolean(initialEvent);
+    const [editedHtml, setEditedHtml] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         return () => {
@@ -50,6 +65,13 @@ export default function CreateEventForm({
         if (saving) return;
 
         const data = new FormData(event.currentTarget);
+        if (editedHtml !== undefined) {
+            data.set("descriptionHtml", editedHtml);
+        } else if (initialEvent?.descriptionHtml) {
+            data.set("descriptionHtml", initialEvent.descriptionHtml);
+        } else if (initialEvent?.description) {
+            data.set("description", initialEvent.description);
+        }
 
         if (!fileInput.current?.files?.length) {
             data.delete("banner");
@@ -59,8 +81,12 @@ export default function CreateEventForm({
         setSubmitError("");
 
         try {
-            const response = await fetch("/api/staff/events", {
-                method: "POST",
+            const endpoint = initialEvent
+                ? `/api/staff/events/${encodeURIComponent(initialEvent.slug)}`
+                : "/api/staff/events";
+
+            const response = await fetch(endpoint, {
+                method: initialEvent ? "PUT" : "POST",
                 body: data,
             });
 
@@ -102,6 +128,9 @@ export default function CreateEventForm({
                 <label className={styles.label}>
                     Event name
                     <input
+                        // On the event name input:
+                        defaultValue={initialEvent?.name ?? ""}
+
                         className={styles.input}
                         name="name"
                         maxLength={160}
@@ -116,6 +145,9 @@ export default function CreateEventForm({
                         <input
                             className={styles.input}
                             name="venue"
+
+                            // On the venue input:
+                            defaultValue={initialEvent?.venue ?? ""}
                             maxLength={200}
                             placeholder="Strathmore University"
                             required
@@ -127,22 +159,26 @@ export default function CreateEventForm({
                         <input
                             className={styles.input}
                             name="startsAt"
+                            // On the datetime-local input:
+                            defaultValue={initialEvent ? nairobiInputValue(initialEvent.startsAt) : ""}
                             type="datetime-local"
                             required
                         />
                     </label>
                 </div>
 
-                <label className={styles.label}>
-                    About the event (optional)
-                    <textarea
-                        className={`${styles.input} min-h-32 resize-y`}
-                        name="description"
-                        maxLength={3000}
-                        rows={4}
-                        placeholder="Who is the event for, and what can attendees expect?"
+                <div className="grid gap-2">
+                    <span className="text-sm font-semibold text-slate-800">
+                        About the event (optional)
+                    </span>
+
+                    <EventDescriptionEditor
+                        initialHtml={initialEvent?.descriptionHtml}
+                        initialText={initialEvent?.description}
+                        onChange={setEditedHtml}
+                        disabled={saving}
                     />
-                </label>
+                </div>
             </fieldset>
 
             <fieldset
@@ -198,9 +234,22 @@ export default function CreateEventForm({
                 </p>
             )}
 
-            <button type="submit" disabled={saving} className={styles.primary}>
-                {saving ? "Creating event…" : "Create event"}
-            </button>
+            <div className="flex flex-wrap gap-3">
+                <button type="submit" disabled={saving} className={styles.primary}>
+                    {saving ? "Saving…" : editing ? "Save changes" : "Create event"}
+                </button>
+
+                {onCancel && (
+                    <button
+                        type="button"
+                        disabled={saving}
+                        onClick={onCancel}
+                        className={styles.secondary}
+                    >
+                        Cancel
+                    </button>
+                )}
+            </div>
         </form>
     );
 }

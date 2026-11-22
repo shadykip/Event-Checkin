@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -19,6 +21,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { maxEventBannerBytes } from './event-banner';
 
 const cookieName = 'staff_session';
+
+const EventFormUpload = FileInterceptor('banner', {
+  limits: {
+    fileSize: maxEventBannerBytes,
+    files: 1,
+    fields: 5,
+    fieldSize: 32 * 1024,
+    parts: 7,
+  },
+});
 
 @Controller('staff')
 export class StaffController {
@@ -60,23 +72,14 @@ export class StaffController {
   @Post('events')
   @HttpCode(201)
   @Header('Cache-Control', 'no-store')
-  @UseInterceptors(
-    FileInterceptor('banner', {
-      limits: {
-        fileSize: maxEventBannerBytes,
-        files: 1,
-        fields: 4,
-        fieldSize: 16 * 1024,
-        parts: 6,
-      },
-    }),
-  )
+  @UseInterceptors(EventFormUpload)
   createEvent(
     @Req() request: Request,
     @Body('name') name: unknown,
     @Body('venue') venue: unknown,
     @Body('startsAt') startsAt: unknown,
     @Body('description') description: unknown,
+    @Body('descriptionHtml') descriptionHtml: unknown,
     @UploadedFile() banner?: Express.Multer.File,
   ) {
     return this.staff.createEvent(
@@ -86,6 +89,33 @@ export class StaffController {
       startsAt,
       description,
       banner,
+      descriptionHtml,
+    );
+  }
+
+  @Put('events/:slug')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @UseInterceptors(EventFormUpload)
+  updateEvent(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('name') name: unknown,
+    @Body('venue') venue: unknown,
+    @Body('startsAt') startsAt: unknown,
+    @Body('description') description: unknown,
+    @Body('descriptionHtml') descriptionHtml: unknown,
+    @UploadedFile() banner?: Express.Multer.File,
+  ) {
+    return this.staff.updateEvent(
+      request.cookies?.[cookieName],
+      slug,
+      name,
+      venue,
+      startsAt,
+      description,
+      banner,
+      descriptionHtml,
     );
   }
 
@@ -227,6 +257,42 @@ export class StaffController {
       request.cookies?.[cookieName],
       slug,
       token,
+    );
+  }
+
+  @Get('events/:slug/team')
+  @Header('Cache-Control', 'no-store')
+  getEventTeam(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.getEventTeam(request.cookies?.[cookieName], slug);
+  }
+
+  @Post('events/:slug/team')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  assignDoorStaff(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('email') email: unknown,
+  ) {
+    return this.staff.assignDoorStaff(
+      request.cookies?.[cookieName],
+      slug,
+      email,
+    );
+  }
+
+  @Delete('events/:slug/team/:staffId')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  removeDoorStaff(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('staffId', ParseUUIDPipe) staffId: string,
+  ) {
+    return this.staff.removeDoorStaff(
+      request.cookies?.[cookieName],
+      slug,
+      staffId,
     );
   }
 

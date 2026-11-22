@@ -9,6 +9,7 @@ model Event {
   venue     String
   startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
   description String?
+  descriptionHtml String? @map("description_html")
   banner      EventBanner?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

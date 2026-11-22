@@ -86,7 +86,8 @@ export class StaffRepository {
       slug: string;
       venue: string;
       startsAt: Date;
-      description?: string;
+      description?: string | null;
+      descriptionHtml?: string | null;
       bannerImage?: Uint8Array<ArrayBuffer>;
     },
   ) {
@@ -108,6 +109,7 @@ export class StaffRepository {
         venue: true,
         startsAt: true,
         description: true,
+        descriptionHtml: true,
       },
     });
 
@@ -137,6 +139,7 @@ export class StaffRepository {
       startsAt: event.startsAt,
       role: assignment.role,
       description: event.description,
+      descriptionHtml: event.descriptionHtml,
       hasBanner: Boolean(bannerImage),
     };
   }
@@ -153,6 +156,7 @@ export class StaffRepository {
             venue: true,
             startsAt: true,
             description: true,
+            descriptionHtml: true,
             banner: {
               select: { eventId: true },
             },
@@ -171,6 +175,91 @@ export class StaffRepository {
         hasBanner: banner !== null,
       };
     });
+  }
+  async listEventTeam(tx: DbClient, eventId: string) {
+    const rows = await tx.eventStaffAssignment.findMany({
+      where: { eventId },
+      select: {
+        role: true,
+        staff: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+      orderBy: [{ staff: { name: 'asc' } }, { staffId: 'asc' }],
+    });
+
+    return rows.map(({ staff, role }) => ({ ...staff, role }));
+  }
+
+  findActiveStaffByEmail(tx: DbClient, email: string) {
+    return tx.staffAccount.findFirst({
+      where: { email, isActive: true },
+      select: { id: true },
+    });
+  }
+
+  assignDoorStaff(tx: DbClient, eventId: string, staffId: string) {
+    return tx.eventStaffAssignment.createMany({
+      data: [{ eventId, staffId, role: 'DOOR_STAFF' }],
+      skipDuplicates: true,
+    });
+  }
+
+  removeDoorStaff(tx: DbClient, eventId: string, staffId: string) {
+    return tx.eventStaffAssignment.deleteMany({
+      where: { eventId, staffId, role: 'DOOR_STAFF' },
+    });
+  }
+
+  async updateEventDetails(
+    tx: DbClient,
+    eventId: string,
+    details: {
+      name: string;
+      venue: string;
+      startsAt: Date;
+      description: string | null;
+      descriptionHtml: string | null;
+    },
+    bannerImage?: Uint8Array<ArrayBuffer>,
+  ) {
+    const event = await tx.event.update({
+      where: { id: eventId },
+      data: details,
+      select: {
+        name: true,
+        slug: true,
+        venue: true,
+        startsAt: true,
+        description: true,
+        descriptionHtml: true,
+      },
+    });
+
+    if (bannerImage) {
+      await tx.eventBanner.upsert({
+        where: { eventId },
+        create: { eventId, image: bannerImage },
+        update: { image: bannerImage },
+        select: { eventId: true },
+      });
+    }
+
+    const banner = await tx.eventBanner.findUnique({
+      where: { eventId },
+      select: { eventId: true },
+    });
+
+    return {
+      ...event,
+      hasBanner: banner !== null,
+      role: 'ORGANIZER' as const,
+    };
   }
 
   findEventBanner(tx: DbClient, eventId: string) {

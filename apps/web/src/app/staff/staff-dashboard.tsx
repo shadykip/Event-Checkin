@@ -5,6 +5,7 @@ import EventOperations from "./event-operations";
 import styles from "./staff-styles";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { descriptionStyles } from "./event-description-editor";
 
 import CreateEventForm from "./create-event-form";
 import EventDirectory, { EventBanner } from "./event-directory";
@@ -15,6 +16,7 @@ export type StaffEvent = {
     venue: string;
     startsAt: string;
     description?: string | null;
+    descriptionHtml?: string | null;
     hasBanner?: boolean;
     role: "DOOR_STAFF" | "ORGANIZER";
 };
@@ -86,8 +88,17 @@ export default function StaffDashboard({
         ? events.find((event) => event.slug === slug)
         : undefined;
 
+    const editingEvent =
+        selected?.role === "ORGANIZER" && searchParams.get("edit") === "1";
+
+    const eventUrl = selected
+        ? `/staff/events/${encodeURIComponent(selected.slug)}?page=${page}`
+        : "";
+
     const title = isDetail
-        ? "Event workspace"
+        ? editingEvent
+            ? "Edit event"
+            : "Event workspace"
         : menu.find((item) => item.id === view)?.label ?? "Overview";
 
     function navigate(destination: View) {
@@ -201,6 +212,11 @@ export default function StaffDashboard({
                         {selected.name} was created. You can now invite your first guest.
                     </p>
                 )}
+                {selected && !editingEvent && searchParams.get("saved") === "1" && (
+                    <p role="status" className={`${styles.feedback} ${styles.success} mb-4`}>
+                        Event changes saved.
+                    </p>
+                )}
 
                 {view === "overview" && (
                     <div className="space-y-6">
@@ -255,7 +271,17 @@ export default function StaffDashboard({
                             Back to my events
                         </Link>
 
-                        {selected ? (
+                        {selected && editingEvent ? (
+                            <CreateEventForm
+                                key={selected.slug}
+                                initialEvent={selected}
+                                onCancel={() => router.replace(eventUrl)}
+                                onCreated={(updated) => {
+                                    onCreated(updated);
+                                    router.replace(`${eventUrl}&saved=1`);
+                                }}
+                            />
+                        ) : selected ? (
                             <article className={styles.card}>
                                 {selected.hasBanner && (
                                     <EventBanner
@@ -283,13 +309,30 @@ export default function StaffDashboard({
                                         {selected.role === "ORGANIZER" ? "Organizer" : "Door staff"}
                                     </span>
                                 </header>
+                                {selected.role === "ORGANIZER" && (
+                                    <div className="border-b border-slate-200 px-5 py-3 sm:px-7">
+                                        <Link href={`${eventUrl}&edit=1`} className={styles.secondary}>
+                                            Edit event
+                                        </Link>
+                                    </div>
+                                )}
 
-                                {selected.description && (
+                                {(selected.descriptionHtml || selected.description) && (
                                     <section className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
-                                        <h2 className="text-base font-semibold text-slate-950">About this event</h2>
-                                        <p className="mt-2 whitespace-pre-line break-words text-sm leading-7 text-slate-700">
-                                            {selected.description}
-                                        </p>
+                                        <h2 className="text-base font-semibold text-slate-950">
+                                            About this event
+                                        </h2>
+
+                                        {selected.descriptionHtml ? (
+                                            <div
+                                                className={`mt-2 ${descriptionStyles}`}
+                                                dangerouslySetInnerHTML={{ __html: selected.descriptionHtml }}
+                                            />
+                                        ) : (
+                                            <p className="mt-2 whitespace-pre-line break-words text-sm leading-7 text-slate-700">
+                                                {selected.description}
+                                            </p>
+                                        )}
                                     </section>
                                 )}
 
@@ -309,6 +352,7 @@ export default function StaffDashboard({
                         )}
                     </div>
                 )}
+
 
                 {view === "create" && canCreateEvents && <CreateEventForm onCreated={created} />}
             </main>
