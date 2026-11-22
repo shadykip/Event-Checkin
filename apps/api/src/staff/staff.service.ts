@@ -1,21 +1,22 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
-  BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
-import type { Prisma } from '../generated/prisma/client';
-import { StaffRepository } from './staff.repository';
-import { guestRosterCsv } from './guest-roster-csv';
-import type { RsvpStatus } from '../generated/prisma/client';
+
+import type { Prisma, RsvpStatus } from '../generated/prisma/client';
 import { parseGuestCsv, validateGuest } from './guest-import';
+import { guestRosterCsv } from './guest-roster-csv';
 import { sendInvitationEmail } from './invitation-mailer';
+import { StaffRepository, type AdmissionStatus } from './staff.repository';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
+const rosterPageSize = 25;
 
 function isToken(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
@@ -51,6 +52,7 @@ export class StaffService {
 
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + sessionDurationMs);
+
     await this.repository.createSession(staff.id, hashToken(token), expiresAt);
 
     return { name: staff.name, token, expiresAt };
@@ -62,21 +64,12 @@ export class StaffService {
     }
 
     const staff = await this.repository.findActiveSession(tx, hashToken(token));
-    if (!staff) throw new UnauthorizedException('Sign in required');
-    return staff;
-  }
 
-  listEvents(sessionToken: unknown) {
-    return this.repository.transaction(async (tx) => {
-      const staff = await this.requireStaff(tx, sessionToken);
-      return this.repository.listAssignedEvents(tx, staff.id);
-    });
-  }
-  getAttendance(sessionToken: unknown, slug: string) {
-    return this.repository.transaction(async (tx) => {
-      const { eventId } = await this.requireAssignment(tx, sessionToken, slug);
-      return this.repository.getAttendance(tx, eventId);
-    });
+    if (!staff) {
+      throw new UnauthorizedException('Sign in required');
+    }
+
+    return staff;
   }
 
   private async requireAssignment(
@@ -98,6 +91,36 @@ export class StaffService {
     };
   }
 
+  private async requireOrganizer(
+    tx: Prisma.TransactionClient,
+    sessionToken: unknown,
+    slug: string,
+  ) {
+    const assignment = await this.requireAssignment(tx, sessionToken, slug);
+
+    if (assignment.role !== 'ORGANIZER') {
+      throw new ForbiddenException(
+        'Organizer access is required for this event.',
+      );
+    }
+
+    return assignment;
+  }
+
+  listEvents(sessionToken: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+      return this.repository.listAssignedEvents(tx, staff.id);
+    });
+  }
+
+  getAttendance(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireAssignment(tx, sessionToken, slug);
+      return this.repository.getAttendance(tx, eventId);
+    });
+  }
+
   issueInvitation(
     sessionToken: unknown,
     slug: string,
@@ -105,33 +128,18 @@ export class StaffService {
     rawEmail: unknown,
   ) {
     return this.repository.transaction(async (tx) => {
-      const assignment = await this.requireOrganizer(tx, sessionToken, slug);
-
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
       const { guestName, guestEmail, error } = validateGuest(rawName, rawEmail);
-      if (error) throw new BadRequestException(error);
 
-      // const guestName = typeof rawName === 'string' ? rawName.trim() : '';
-      // const guestEmail =
-      //   typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
-
-      // if (!guestName || guestName.length > 200) {
-      //   throw new BadRequestException(
-      //     'Enter a guest name of 1 to 200 characters.',
-      //   );
-      // }
-
-      // if (
-      //   guestEmail.length > 254 ||
-      //   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)
-      // ) {
-      //   throw new BadRequestException('Enter a valid guest email address.');
-      // }
+      if (error) {
+        throw new BadRequestException(error);
+      }
 
       const token = randomBytes(32).toString('base64url');
 
       const invitation = await this.repository.insertInvitation(
         tx,
-        assignment.eventId,
+        eventId,
         guestName,
         guestEmail,
         hashToken(token),
@@ -170,6 +178,7 @@ export class StaffService {
       const invited = new Set(
         existing.map((row) => row.guestEmail.toLowerCase()),
       );
+
       const firstRecord = new Map<string, number>();
       const summary = { ready: 0, invalid: 0, duplicate: 0, existing: 0 };
 
@@ -209,7 +218,12 @@ export class StaffService {
   private rosterFilters(
     rawQuery: unknown,
     rawRsvp: unknown,
-  ): { query: string; rsvpStatus: RsvpStatus | undefined } {
+    rawAdmission: unknown,
+  ): {
+    query: string;
+    rsvpStatus: RsvpStatus | undefined;
+    admission: AdmissionStatus | undefined;
+  } {
     if (
       rawQuery !== undefined &&
       (typeof rawQuery !== 'string' || rawQuery.length > 200)
@@ -228,9 +242,21 @@ export class StaffService {
       );
     }
 
+    if (
+      rawAdmission !== undefined &&
+      rawAdmission !== 'expected' &&
+      rawAdmission !== 'checked_in' &&
+      rawAdmission !== 'revoked'
+    ) {
+      throw new BadRequestException(
+        'Admission must be expected, checked_in or revoked.',
+      );
+    }
+
     return {
       query: typeof rawQuery === 'string' ? rawQuery.trim() : '',
       rsvpStatus: rawRsvp,
+      admission: rawAdmission,
     };
   }
 
@@ -239,60 +265,46 @@ export class StaffService {
     slug: string,
     rawPage: unknown,
     rawQuery?: unknown,
-    rsvp?: unknown,
+    rawRsvp?: unknown,
+    rawAdmission?: unknown,
   ) {
     return this.repository.transaction(async (tx) => {
       const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
-
-      if (
-        rawQuery !== undefined &&
-        (typeof rawQuery !== 'string' || rawQuery.length > 200)
-      ) {
-        throw new BadRequestException('Search must be at most 200 characters.');
-      }
-
-      const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
-
-      if (
-        rsvp !== undefined &&
-        rsvp !== 'PENDING' &&
-        rsvp !== 'ACCEPTED' &&
-        rsvp !== 'DECLINED'
-      ) {
-        throw new BadRequestException(
-          'RSVP must be PENDING, ACCEPTED or DECLINED.',
-        );
-      }
+      const { query, rsvpStatus, admission } = this.rosterFilters(
+        rawQuery,
+        rawRsvp,
+        rawAdmission,
+      );
 
       const pageText = rawPage === undefined ? '1' : rawPage;
+
       if (typeof pageText !== 'string' || !/^[1-9]\d*$/.test(pageText)) {
         throw new BadRequestException('Page must be a positive integer.');
       }
 
       const page = Number(pageText);
-      const pageSize = 25;
-      const skip = (page - 1) * pageSize;
+      const skip = (page - 1) * rosterPageSize;
 
       if (!Number.isSafeInteger(skip) || skip > 2_147_483_647) {
         throw new BadRequestException('Page is too large.');
       }
 
-      // One extra row tells the UI whether to enable Next.
+      // The extra row indicates whether the filtered roster has another page.
       const rows = await this.repository.listInvitations(
         tx,
         eventId,
         skip,
-        pageSize + 1,
+        rosterPageSize + 1,
         query,
-        rsvp,
+        rsvpStatus,
+        admission,
       );
 
-      const items = rows.slice(0, pageSize).map((row) => {
-        const admission = row.checkIns[0];
+      const items = rows.slice(0, rosterPageSize).map((row) => {
+        const checkIn = row.checkIns[0];
+        let status: AdmissionStatus = 'expected';
 
-        let status: 'expected' | 'checked_in' | 'revoked' = 'expected';
-
-        if (admission) {
+        if (checkIn) {
           status = 'checked_in';
         } else if (row.revokedAt) {
           status = 'revoked';
@@ -304,17 +316,19 @@ export class StaffService {
           guestEmail: row.guestEmail,
           rsvpStatus: row.rsvpStatus,
           invitedAt: row.createdAt,
-          checkedInAt: admission?.checkedInAt ?? null,
+          checkedInAt: checkIn?.checkedInAt ?? null,
           status,
         };
       });
 
+      // The summary cards show all active invitations for the event.
       const counts = await this.repository.countActiveInvitationsByRsvp(
         tx,
         eventId,
       );
 
       const rsvpSummary = { ACCEPTED: 0, DECLINED: 0, PENDING: 0 };
+
       for (const row of counts) {
         rsvpSummary[row.rsvpStatus] = row._count._all;
       }
@@ -322,8 +336,8 @@ export class StaffService {
       return {
         items,
         page,
-        pageSize,
-        hasNextPage: rows.length > pageSize,
+        pageSize: rosterPageSize,
+        hasNextPage: rows.length > rosterPageSize,
         rsvpSummary,
       };
     });
@@ -334,10 +348,15 @@ export class StaffService {
     slug: string,
     rawQuery?: unknown,
     rawRsvp?: unknown,
+    rawAdmission?: unknown,
   ) {
     const guests = await this.repository.transaction(async (tx) => {
       const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
-      const { query, rsvpStatus } = this.rosterFilters(rawQuery, rawRsvp);
+      const { query, rsvpStatus, admission } = this.rosterFilters(
+        rawQuery,
+        rawRsvp,
+        rawAdmission,
+      );
 
       return this.repository.listInvitations(
         tx,
@@ -346,26 +365,11 @@ export class StaffService {
         undefined,
         query,
         rsvpStatus,
+        admission,
       );
     });
 
     return guestRosterCsv(guests);
-  }
-
-  private async requireOrganizer(
-    tx: Prisma.TransactionClient,
-    sessionToken: unknown,
-    slug: string,
-  ) {
-    const assignment = await this.requireAssignment(tx, sessionToken, slug);
-
-    if (assignment.role !== 'ORGANIZER') {
-      throw new ForbiddenException(
-        'Organizer access is required for this event.',
-      );
-    }
-
-    return assignment;
   }
 
   checkIn(sessionToken: unknown, slug: string, passToken: string) {
@@ -381,8 +385,10 @@ export class StaffService {
         eventId,
         hashToken(passToken),
       );
-      if (!invitation)
+
+      if (!invitation) {
         throw new NotFoundException('Pass unavailable for this event');
+      }
 
       const admission = await this.repository.recordAdmission(
         tx,
@@ -478,6 +484,7 @@ export class StaffService {
     await sendInvitationEmail(delivery.invitation, delivery.token);
     return { accepted: true };
   }
+
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {
       await this.repository.deleteSession(hashToken(sessionToken));

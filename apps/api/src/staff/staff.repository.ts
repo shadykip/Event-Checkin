@@ -4,6 +4,25 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type DbClient = Prisma.TransactionClient;
 
+export type AdmissionStatus = 'expected' | 'checked_in' | 'revoked';
+
+const admissionConditions: Record<
+  AdmissionStatus,
+  Prisma.InvitationWhereInput
+> = {
+  expected: {
+    revokedAt: null,
+    checkIns: { none: {} },
+  },
+  checked_in: {
+    checkIns: { some: {} },
+  },
+  revoked: {
+    revokedAt: { not: null },
+    checkIns: { none: {} },
+  },
+};
+
 @Injectable()
 export class StaffRepository {
   constructor(private readonly db: PrismaService) {}
@@ -81,12 +100,14 @@ export class StaffRepository {
     take: number | undefined,
     query = '',
     rsvpStatus?: RsvpStatus,
+    admission?: AdmissionStatus,
   ) {
     const term = query.replace(/[\\%_]/g, '\\$&');
 
     return tx.invitation.findMany({
       where: {
         eventId,
+        ...(admission ? admissionConditions[admission] : {}),
         ...(rsvpStatus && { rsvpStatus }),
         ...(term
           ? {
