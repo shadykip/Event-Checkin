@@ -110,26 +110,26 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
 
 
     return (
-        <section className="border-t border-slate-200 px-5 py-5 sm:px-7">
+        <section className="border-t border-slate-200 px-4 py-5 sm:px-6">
             {!open ? (
                 <button
                     type="button"
-                    className={styles.secondary}
+                    className={styles.primary}
                     onClick={() => setOpen(true)}
                 >
                     Invite guest
                 </button>
             ) : issued ? (
-                <div className="max-w-xl space-y-3">
-                    <h3 className={styles.sectionTitle}>Invitation ready</h3>
-
-                    <p className={styles.muted}>
-                        Email the invitation to <strong>{issued.guestEmail}</strong>,
-                        or copy the private link before closing this panel.
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5">
+                    <h4 className="text-lg font-semibold tracking-tight text-slate-950">
+                        Invitation ready for {issued.guestName}
+                    </h4>
+                    <p className="mt-1 break-words text-sm text-slate-600">
+                        Email the pass to {issued.guestEmail}, or copy the private link before closing.
                     </p>
 
-                    <label className={styles.label}>
-                        Invitation link
+                    <label className={`${styles.label} mt-4`}>
+                        Private invitation link
                         <input
                             ref={linkInput}
                             className={styles.input}
@@ -139,7 +139,7 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                         />
                     </label>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="mt-4 flex flex-wrap items-start gap-2">
                         <EmailPassButton
                             key={issued.url}
                             slug={slug}
@@ -147,62 +147,60 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                             guestEmail={issued.guestEmail}
                             label="Email invitation"
                         />
-                        <button
-                            type="button"
-                            className={styles.secondary}
-                            onClick={copyLink}
-                        >
-                            Copy invitation link
+                        <button type="button" className={styles.secondary} onClick={copyLink}>
+                            Copy link
                         </button>
-
-                        <button
-                            type="button"
-                            className={styles.secondary}
-                            onClick={close}
-                        >
+                        <button type="button" className={styles.textButton} onClick={close}>
                             Done
                         </button>
                     </div>
 
-                    <div role="status" aria-live="polite" className={styles.muted}>
-
-                        {copyStatus && <p>{copyStatus}</p>}
-                    </div>
                     <p role="status" className={styles.muted}>{copyStatus}</p>
                 </div>
             ) : (
-                <form onSubmit={submit} className={`${styles.stack} max-w-xl`}>
-                    <h3 className={styles.sectionTitle}>Invite a guest</h3>
+                <form
+                    onSubmit={submit}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
+                >
+                    <h4 className="text-lg font-semibold tracking-tight text-slate-950">
+                        Invite a guest
+                    </h4>
+                    <p className="mt-1 text-sm text-slate-600">
+                        Create a private pass, then choose how to share it.
+                    </p>
 
-                    <label className={styles.label}>
-                        Guest name
-                        <input
-                            name="guestName"
-                            className={styles.input}
-                            maxLength={200}
-                            required
-                            autoFocus
-                        />
-                    </label>
-
-                    <label className={styles.label}>
-                        Guest email
-                        <input
-                            name="guestEmail"
-                            type="email"
-                            className={styles.input}
-                            maxLength={254}
-                            required
-                        />
-                    </label>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        <label className={styles.label}>
+                            Guest name
+                            <input
+                                name="guestName"
+                                className={styles.input}
+                                maxLength={200}
+                                required
+                                autoFocus
+                                disabled={busy}
+                            />
+                        </label>
+                        <label className={styles.label}>
+                            Email address
+                            <input
+                                name="guestEmail"
+                                type="email"
+                                className={styles.input}
+                                maxLength={254}
+                                required
+                                disabled={busy}
+                            />
+                        </label>
+                    </div>
 
                     {error && (
-                        <p role="alert" className={`${styles.feedback} ${styles.error}`}>
+                        <p role="alert" className={`${styles.feedback} ${styles.error} mt-4`}>
                             {error}
                         </p>
                     )}
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="mt-5 flex flex-wrap gap-2">
                         <button type="submit" className={styles.primary} disabled={busy}>
                             {busy ? "Creating invitation…" : "Create invitation"}
                         </button>

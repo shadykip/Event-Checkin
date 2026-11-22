@@ -18,6 +18,16 @@ type Screen =
   | { status: "ready"; events: StaffEvent[] }
   | { status: "error" };
 
+const staffEventDate = new Intl.DateTimeFormat("en-KE", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "Africa/Nairobi",
+});
 
 
 async function loadStaffEvents(signal?: AbortSignal): Promise<Screen> {
@@ -207,7 +217,14 @@ export default function StaffPage() {
 
         {screen.status === "ready" && (
           <>
-            <h1 className={styles.title}>Your assigned events</h1>
+            <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                Staff dashboard
+              </h1>
+              <p className="text-sm font-medium text-slate-600">
+                {screen.events.length} assigned {screen.events.length === 1 ? "event" : "events"}
+              </p>
+            </div>
 
             {message && (
               <p role="alert" className={`${styles.feedback} ${styles.error}`}>
@@ -225,8 +242,22 @@ export default function StaffPage() {
                 {screen.events.map((event) => (
                   <li key={event.slug} className={styles.card}>
                     <header className={styles.eventHeader}>
-                      <h2 className={styles.eventName}>{event.name}</h2>
-                      <p className={styles.muted}>{event.venue}</p>
+                      <div className="min-w-0">
+                        <h2 className={styles.eventName}>{event.name}</h2>
+                        <p className="mt-2 break-words text-sm leading-6 text-slate-200">
+                          {event.venue}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-slate-200">
+                          <time dateTime={event.startsAt}>
+                            {staffEventDate.format(new Date(event.startsAt))}
+                          </time>
+                          {" · Nairobi time"}
+                        </p>
+                      </div>
+
+                      <span className="w-fit shrink-0 rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white">
+                        {event.role === "ORGANIZER" ? "Organizer" : "Door staff"}
+                      </span>
                     </header>
 
                     <EventOperations slug={event.slug} role={event.role} />

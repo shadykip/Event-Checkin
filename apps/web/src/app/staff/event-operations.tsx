@@ -3,10 +3,10 @@
 import { useState } from "react";
 import AttendanceSummary from "./attendance-summary";
 import CheckInForm from "./check-in-form";
+import GuestImportPreview from "./guest-import-preview";
+import GuestList from "./guest-list";
 import InviteGuestForm from "./invite-guest-form";
 import styles from "./staff-styles";
-import GuestList from "./guest-list";
-import GuestImportPreview from "./guest-import-preview";
 
 type Props = {
     slug: string;
@@ -21,14 +21,26 @@ export default function EventOperations({ slug, role }: Props) {
     }
 
     return (
-        <>
+        <div className="space-y-4 p-3 sm:space-y-5 sm:p-5 lg:p-6">
             <div className={styles.eventBody}>
                 <CheckInForm slug={slug} onConfirmed={refreshAttendance} />
                 <AttendanceSummary key={attendanceVersion} slug={slug} />
             </div>
 
             {role === "ORGANIZER" && (
-                <>
+                <section
+                    aria-labelledby={`guest-management-${slug}`}
+                    className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                >
+                    <header className="px-5 py-4 sm:px-6">
+                        <h3
+                            id={`guest-management-${slug}`}
+                            className="text-lg font-semibold tracking-tight text-slate-950"
+                        >
+                            Guest management
+                        </h3>
+                    </header>
+
                     <InviteGuestForm slug={slug} onIssued={refreshAttendance} />
                     <GuestImportPreview slug={slug} onIssued={refreshAttendance} />
                     <GuestList
@@ -36,8 +48,8 @@ export default function EventOperations({ slug, role }: Props) {
                         version={attendanceVersion}
                         onRevoked={refreshAttendance}
                     />
-                </>
+                </section>
             )}
-        </>
+        </div>
     );
 }

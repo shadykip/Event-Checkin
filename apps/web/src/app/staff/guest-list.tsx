@@ -22,11 +22,14 @@ type Guest = {
 type GuestPage = {
     items: Guest[];
     page: number;
+    pageSize: number;
     hasNextPage: boolean;
     rsvpSummary: Record<GuestRsvpStatus, number>;
 };
 
 const summaryOrder: GuestRsvpStatus[] = ["ACCEPTED", "DECLINED", "PENDING"];
+
+
 
 const statusLabels: Record<GuestStatus, string> = {
     expected: "Expected",
@@ -68,7 +71,7 @@ export default function GuestList({
     onRevoked: () => void;
 }) {
     const [notice, setNotice] = useState("");
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(true);
     const [draft, setDraft] = useState("");
     const [query, setQuery] = useState("");
     const [rsvp, setRsvp] = useState("");
@@ -84,6 +87,14 @@ export default function GuestList({
     const requestKey = JSON.stringify([slug, query, rsvp, page, version, retry]);
     const current = result?.key === requestKey ? result : null;
     const summary = result?.data?.rsvpSummary;
+
+    const data = current?.data;
+    const firstGuest = data && data.items.length > 0
+        ? (data.page - 1) * data.pageSize + 1
+        : 0;
+    const lastGuest = data && firstGuest > 0
+        ? firstGuest + data.items.length - 1
+        : 0;
 
     useEffect(() => {
         if (!open) return;
@@ -136,7 +147,23 @@ export default function GuestList({
 
     return (
         <section className="border-t border-slate-200 px-5 py-5 sm:px-7">
-            <button
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h4 className="text-xl font-semibold tracking-tight text-slate-950">
+                    Guest directory
+                </h4>
+                <button
+                    type="button"
+                    className={styles.textButton}
+                    aria-expanded={open}
+                    onClick={() => {
+                        if (!open) setRetry((value) => value + 1);
+                        setOpen(!open);
+                    }}
+                >
+                    {open ? "Hide directory" : "View guest directory"}
+                </button>
+            </div>
+            {/* <button
                 type="button"
                 className={styles.secondary}
                 aria-expanded={open}
@@ -146,7 +173,7 @@ export default function GuestList({
                 }}
             >
                 {open ? "Hide guest list" : "View guest list"}
-            </button>
+            </button> */}
 
             {open && (
                 <div className="mt-5 space-y-4">
@@ -190,7 +217,10 @@ export default function GuestList({
                             </div>
                         </fieldset>
                     )}
-                    <form onSubmit={search} className="flex flex-wrap items-end gap-2">
+                    <form
+                        onSubmit={search}
+                        className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
                         <label className={`${styles.label} min-w-0 basis-full sm:flex-1`}>
                             Search guests
                             <input
@@ -258,64 +288,102 @@ export default function GuestList({
                         </div>
                     )}
 
-                    {current?.data && (
-                        <>
-                            {current.data.items.length === 0 ? (
-                                <p role="status" className={styles.muted}>
-                                    {query || rsvp ? "No guests match your filters." : "No invitations on this page."}
-                                </p>
+                    {data && (
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                            {data.items.length === 0 ? (
+                                <div role="status" className="px-5 py-8 text-center">
+                                    <p className="font-semibold text-slate-900">
+                                        {query || rsvp
+                                            ? "No guests match your filters"
+                                            : page > 1
+                                                ? "No guests on this page"
+                                                : "Your guest directory is empty"}
+                                    </p>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                        {query || rsvp
+                                            ? "Change the search or clear the filters to see more guests."
+                                            : page > 1
+                                                ? "Go back one page to see earlier results."
+                                                : "Invite a guest or import a CSV to start your roster."}
+                                    </p>
+                                </div>
                             ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <caption className="sr-only">Event guest list</caption>
-                                        <thead className="border-b border-slate-200 text-slate-600">
+                                <div
+                                    className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-teal-700"
+                                    role="region"
+                                    aria-label="Guest directory table"
+                                    tabIndex={0}
+                                >
+                                    <table className="w-full min-w-[44rem] text-left text-sm">
+                                        <caption className="sr-only">Guests matching the current filters</caption>
+                                        <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                                             <tr>
-                                                <th scope="col" className="py-2 pr-4">Guest</th>
-                                                <th scope="col" className="py-2 pr-4">RSVP</th>
-                                                <th scope="col" className="py-2 pr-4">Admission</th>
-                                                <th scope="col" className="py-2">Check-in · Nairobi time</th>
-                                                <th scope="col" className="py-2 pl-3">Actions</th>
+                                                <th scope="col" className="px-4 py-3">Guest</th>
+                                                <th scope="col" className="px-3 py-3">RSVP</th>
+                                                <th scope="col" className="px-3 py-3">Admission</th>
+                                                <th scope="col" className="px-3 py-3">Check-in · Nairobi time</th>
+                                                <th scope="col" className="px-4 py-3">Actions</th>
                                             </tr>
                                         </thead>
+
                                         <tbody className="divide-y divide-slate-100">
-                                            {current.data.items.map((guest) => (
-                                                <tr key={guest.id}>
-                                                    <td className="py-3 pr-4">
-                                                        <div className="font-semibold">{guest.guestName}</div>
-                                                        <div className="break-all text-slate-600">{guest.guestEmail}</div>
-                                                    </td>
-                                                    <td className="py-3 pr-4">
-                                                        <span
-                                                            className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${rsvpStyles[guest.rsvpStatus]}`}
-                                                        >
+                                            {data.items.map((guest) => (
+                                                <tr
+                                                    key={guest.id}
+                                                    className="align-top hover:bg-slate-50/70 focus-within:bg-slate-50/70"
+                                                >
+                                                    <th scope="row" className="px-4 py-4 font-normal">
+                                                        <span className="block break-words font-semibold text-slate-950">
+                                                            {guest.guestName}
+                                                        </span>
+                                                        <span className="mt-0.5 block break-all text-xs leading-5 text-slate-600">
+                                                            {guest.guestEmail}
+                                                        </span>
+                                                    </th>
+
+                                                    <td className="px-3 py-4">
+                                                        <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${rsvpStyles[guest.rsvpStatus]}`}>
                                                             {rsvpLabels[guest.rsvpStatus]}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 pr-4">
-                                                        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${statusStyles[guest.status]}`}>
+
+                                                    <td className="px-3 py-4">
+                                                        <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[guest.status]}`}>
                                                             {statusLabels[guest.status]}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 text-slate-600">
+
+                                                    <td className="px-3 py-4 text-slate-600">
                                                         {guest.checkedInAt ? (
                                                             <time dateTime={guest.checkedInAt}>
                                                                 {admissionTime.format(new Date(guest.checkedInAt))}
                                                             </time>
-                                                        ) : "—"}
+                                                        ) : (
+                                                            <span aria-label="No check-in recorded">—</span>
+                                                        )}
                                                     </td>
-                                                    <td className="py-3 pl-3 align-top">
-                                                        {guest.status === "expected" && (
-                                                            <div className="flex flex-col items-start gap-2">
-                                                                <ReplacePassButton slug={slug} guest={guest} />
-                                                                <RevokePassButton
-                                                                    slug={slug}
-                                                                    guest={guest}
-                                                                    onRevoked={(guestName) => {
-                                                                        setNotice(`Pass revoked for ${guestName}.`);
-                                                                        onRevoked();
-                                                                    }}
-                                                                />
-                                                            </div>
+
+                                                    <td className="px-4 py-2">
+                                                        {guest.status === "expected" ? (
+                                                            <details>
+                                                                <summary className="w-fit cursor-pointer rounded-md py-2.5 text-sm font-semibold text-teal-800 focus-visible:outline-2 focus-visible:outline-teal-700">
+                                                                    Manage
+                                                                    <span className="sr-only"> pass for {guest.guestName}</span>
+                                                                </summary>
+                                                                <div className="grid gap-1 pb-2">
+                                                                    <ReplacePassButton slug={slug} guest={guest} />
+                                                                    <RevokePassButton
+                                                                        slug={slug}
+                                                                        guest={guest}
+                                                                        onRevoked={(guestName) => {
+                                                                            setNotice(`Pass revoked for ${guestName}.`);
+                                                                            onRevoked();
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            </details>
+                                                        ) : (
+                                                            <span className="inline-block py-2.5 text-slate-400">—</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -325,20 +393,40 @@ export default function GuestList({
                                 </div>
                             )}
 
-                            {(page > 1 || current.data.hasNextPage) && (
-                                <nav aria-label="Guest list pages" className="flex items-center gap-3">
-                                    <button type="button" className={styles.secondary}
-                                        disabled={page === 1} onClick={() => setPage(page - 1)}>
+                            <nav
+                                aria-label="Guest directory pagination"
+                                className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3"
+                            >
+                                <p role="status" className="text-sm text-slate-600">
+                                    {firstGuest > 0
+                                        ? `Showing guests ${firstGuest}–${lastGuest}`
+                                        : "Showing 0 guests"}
+                                    <span className="ml-2 text-xs">({data.pageSize} per page)</span>
+                                </p>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        className={styles.secondary}
+                                        disabled={page <= 1}
+                                        onClick={() => setPage(page - 1)}
+                                    >
                                         Previous
                                     </button>
-                                    <span className="text-sm">Page {page}</span>
-                                    <button type="button" className={styles.secondary}
-                                        disabled={!current.data.hasNextPage} onClick={() => setPage(page + 1)}>
+                                    <span className="px-1 text-sm font-semibold tabular-nums text-slate-800">
+                                        Page {data.page}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={styles.secondary}
+                                        disabled={!data.hasNextPage}
+                                        onClick={() => setPage(page + 1)}
+                                    >
                                         Next
                                     </button>
-                                </nav>
-                            )}
-                        </>
+                                </div>
+                            </nav>
+                        </div>
                     )}
                 </div>
             )}
