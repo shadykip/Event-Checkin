@@ -20,6 +20,8 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
     const [error, setError] = useState("");
     const [issued, setIssued] = useState<IssuedInvitation | null>(null);
     const [copyStatus, setCopyStatus] = useState("");
+    const [emailState, setEmailState] = useState<"idle" | "sending" | "sent">("idle");
+    const [emailMessage, setEmailMessage] = useState("");
     const linkInput = useRef<HTMLInputElement>(null);
 
     function close() {
@@ -27,6 +29,8 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
         setIssued(null);
         setError("");
         setCopyStatus("");
+        setEmailState("idle");
+        setEmailMessage("");
     }
 
     async function submit(event: FormEvent<HTMLFormElement>) {
@@ -90,6 +94,48 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
         }
     }
 
+    async function emailLink() {
+        if (!issued || emailState !== "idle") return;
+
+        setEmailState("sending");
+        setEmailMessage("");
+
+        try {
+            const response = await fetch(
+                `/api/staff/events/${encodeURIComponent(slug)}/invitations/email`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        token: new URL(issued.url).hash.slice(1),
+                    }),
+                    cache: "no-store",
+                },
+            );
+
+            if (!response.ok) {
+                const detail = await response.json().catch(() => null);
+                throw new Error(
+                    typeof detail?.message === "string"
+                        ? detail.message
+                        : "Email delivery could not be confirmed.",
+                );
+            }
+
+            setEmailState("sent");
+            setEmailMessage(`Email accepted for ${issued.guestEmail}.`);
+        } catch (cause) {
+            setEmailState("idle");
+            setEmailMessage(
+                cause instanceof TypeError
+                    ? "Connection interrupted. Check the inbox before retrying."
+                    : cause instanceof Error
+                        ? cause.message
+                        : "Email delivery could not be confirmed.",
+            );
+        }
+    }
+
     async function copyLink() {
         if (!issued) return;
 
@@ -102,6 +148,8 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
             setCopyStatus("Link selected. Use your device’s Copy command.");
         }
     }
+
+
 
     return (
         <section className="border-t border-slate-200 px-5 py-5 sm:px-7">
@@ -118,8 +166,8 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                     <h3 className={styles.sectionTitle}>Invitation ready</h3>
 
                     <p className={styles.muted}>
-                        Copy the private link for <strong>{issued.guestName}</strong> before
-                        closing this panel. You can share it with {issued.guestEmail}.
+                        Email the invitation to <strong>{issued.guestEmail}</strong>,
+                        or copy the private link before closing this panel.
                     </p>
 
                     <label className={styles.label}>
@@ -134,14 +182,41 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
                     </label>
 
                     <div className="flex flex-wrap gap-3">
-                        <button type="button" className={styles.primary} onClick={copyLink}>
+                        <button
+                            type="button"
+                            className={styles.primary}
+                            onClick={emailLink}
+                            disabled={emailState !== "idle"}
+                        >
+                            {emailState === "sending"
+                                ? "Sending…"
+                                : emailState === "sent"
+                                    ? "Email sent"
+                                    : "Email invitation"}
+                        </button>
+
+                        <button
+                            type="button"
+                            className={styles.secondary}
+                            onClick={copyLink}
+                        >
                             Copy invitation link
                         </button>
-                        <button type="button" className={styles.secondary} onClick={close}>
+
+                        <button
+                            type="button"
+                            className={styles.secondary}
+                            onClick={close}
+                            disabled={emailState === "sending"}
+                        >
                             Done
                         </button>
                     </div>
 
+                    <div role="status" aria-live="polite" className={styles.muted}>
+                        {emailMessage && <p>{emailMessage}</p>}
+                        {copyStatus && <p>{copyStatus}</p>}
+                    </div>
                     <p role="status" className={styles.muted}>{copyStatus}</p>
                 </div>
             ) : (

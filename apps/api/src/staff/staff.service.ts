@@ -13,6 +13,7 @@ import { StaffRepository } from './staff.repository';
 import { guestRosterCsv } from './guest-roster-csv';
 import type { RsvpStatus } from '../generated/prisma/client';
 import { parseGuestCsv, validateGuest } from './guest-import';
+import { sendInvitationEmail } from './invitation-mailer';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 
@@ -447,6 +448,35 @@ export class StaffService {
 
       return invitation;
     });
+  }
+
+  async emailInvitation(
+    sessionToken: unknown,
+    slug: string,
+    rawToken: unknown,
+  ) {
+    const delivery = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      if (!isToken(rawToken)) {
+        throw new BadRequestException('Invalid invitation token.');
+      }
+
+      const invitation = await this.repository.findInvitationForEmail(
+        tx,
+        eventId,
+        hashToken(rawToken),
+      );
+
+      if (!invitation) {
+        throw new NotFoundException('This pass is unavailable for this event.');
+      }
+
+      return { invitation, token: rawToken };
+    });
+
+    await sendInvitationEmail(delivery.invitation, delivery.token);
+    return { accepted: true };
   }
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {

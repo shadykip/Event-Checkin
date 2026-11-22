@@ -253,6 +253,23 @@ export class StaffRepository {
     });
   }
 
+  findInvitationForEmail(tx: DbClient, eventId: string, tokenHash: string) {
+    return tx.invitation.findFirst({
+      where: {
+        eventId,
+        tokenHash,
+        revokedAt: null,
+      },
+      select: {
+        guestName: true,
+        guestEmail: true,
+        event: {
+          select: { name: true, venue: true, startsAt: true },
+        },
+      },
+    });
+  }
+
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },

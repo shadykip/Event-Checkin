@@ -158,6 +158,21 @@ export class StaffController {
     );
   }
 
+  @Post('events/:slug/invitations/email')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  emailInvitation(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('token') token: unknown,
+  ) {
+    return this.staff.emailInvitation(
+      request.cookies?.[cookieName],
+      slug,
+      token,
+    );
+  }
+
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')
