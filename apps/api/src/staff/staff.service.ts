@@ -10,6 +10,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
 import type { Prisma } from '../generated/prisma/client';
 import { StaffRepository } from './staff.repository';
+import { guestRosterCsv } from './guest-roster-csv';
+import type { RsvpStatus } from '../generated/prisma/client';
+import { parseGuestCsv, validateGuest } from './guest-import';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 
@@ -103,22 +106,25 @@ export class StaffService {
     return this.repository.transaction(async (tx) => {
       const assignment = await this.requireOrganizer(tx, sessionToken, slug);
 
-      const guestName = typeof rawName === 'string' ? rawName.trim() : '';
-      const guestEmail =
-        typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+      const { guestName, guestEmail, error } = validateGuest(rawName, rawEmail);
+      if (error) throw new BadRequestException(error);
 
-      if (!guestName || guestName.length > 200) {
-        throw new BadRequestException(
-          'Enter a guest name of 1 to 200 characters.',
-        );
-      }
+      // const guestName = typeof rawName === 'string' ? rawName.trim() : '';
+      // const guestEmail =
+      //   typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
 
-      if (
-        guestEmail.length > 254 ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)
-      ) {
-        throw new BadRequestException('Enter a valid guest email address.');
-      }
+      // if (!guestName || guestName.length > 200) {
+      //   throw new BadRequestException(
+      //     'Enter a guest name of 1 to 200 characters.',
+      //   );
+      // }
+
+      // if (
+      //   guestEmail.length > 254 ||
+      //   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)
+      // ) {
+      //   throw new BadRequestException('Enter a valid guest email address.');
+      // }
 
       const token = randomBytes(32).toString('base64url');
 
@@ -143,6 +149,88 @@ export class StaffService {
         passPath: `/pass#${token}`,
       };
     });
+  }
+
+  previewGuestImport(sessionToken: unknown, slug: string, csv: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const candidates = parseGuestCsv(csv);
+
+      const emails = new Set(
+        candidates
+          .filter((guest) => !guest.error)
+          .map((guest) => guest.guestEmail),
+      );
+
+      const existing = await this.repository.findInvitedEmails(tx, eventId, [
+        ...emails,
+      ]);
+
+      const invited = new Set(
+        existing.map((row) => row.guestEmail.toLowerCase()),
+      );
+      const firstRecord = new Map<string, number>();
+      const summary = { ready: 0, invalid: 0, duplicate: 0, existing: 0 };
+
+      const rows = candidates.map(
+        ({ record, guestName, guestEmail, error }) => {
+          let status: keyof typeof summary = 'ready';
+          let message = 'Ready to invite';
+
+          if (error) {
+            status = 'invalid';
+            message = error;
+          } else {
+            const previous = firstRecord.get(guestEmail);
+
+            if (previous !== undefined) {
+              status = 'duplicate';
+              message = `Duplicate of record ${previous}`;
+            } else {
+              firstRecord.set(guestEmail, record);
+
+              if (invited.has(guestEmail)) {
+                status = 'existing';
+                message = 'Already invited to this event';
+              }
+            }
+          }
+
+          summary[status] += 1;
+          return { record, guestName, guestEmail, status, message };
+        },
+      );
+
+      return { summary, rows };
+    });
+  }
+
+  private rosterFilters(
+    rawQuery: unknown,
+    rawRsvp: unknown,
+  ): { query: string; rsvpStatus: RsvpStatus | undefined } {
+    if (
+      rawQuery !== undefined &&
+      (typeof rawQuery !== 'string' || rawQuery.length > 200)
+    ) {
+      throw new BadRequestException('Search must be at most 200 characters.');
+    }
+
+    if (
+      rawRsvp !== undefined &&
+      rawRsvp !== 'PENDING' &&
+      rawRsvp !== 'ACCEPTED' &&
+      rawRsvp !== 'DECLINED'
+    ) {
+      throw new BadRequestException(
+        'RSVP must be PENDING, ACCEPTED or DECLINED.',
+      );
+    }
+
+    return {
+      query: typeof rawQuery === 'string' ? rawQuery.trim() : '',
+      rsvpStatus: rawRsvp,
+    };
   }
 
   listInvitations(
@@ -238,6 +326,29 @@ export class StaffService {
         rsvpSummary,
       };
     });
+  }
+
+  async exportInvitations(
+    sessionToken: unknown,
+    slug: string,
+    rawQuery?: unknown,
+    rawRsvp?: unknown,
+  ) {
+    const guests = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const { query, rsvpStatus } = this.rosterFilters(rawQuery, rawRsvp);
+
+      return this.repository.listInvitations(
+        tx,
+        eventId,
+        0,
+        undefined,
+        query,
+        rsvpStatus,
+      );
+    });
+
+    return guestRosterCsv(guests);
   }
 
   private async requireOrganizer(

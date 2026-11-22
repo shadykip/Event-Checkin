@@ -38,10 +38,7 @@ const nextConfig: NextConfig = {
         source: "/api/staff/events/:slug/invitations",
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/invitations`,
       },
-      {
-        source: "/api/staff/logout",
-        destination: new URL("/staff/logout", api).href,
-      },
+
       {
         source: "/api/staff/events/:slug/invitations/:invitationId/revoke",
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/invitations/:invitationId/revoke`,
@@ -49,6 +46,14 @@ const nextConfig: NextConfig = {
       {
         source: "/api/invitations/rsvp",
         destination: new URL("/invitations/rsvp", api).href,
+      },
+      {
+        source: "/api/staff/events/:slug/invitations/preview",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/invitations/preview`,
+      },
+      {
+        source: "/api/staff/logout",
+        destination: new URL("/staff/logout", api).href,
       },
     ];
   },

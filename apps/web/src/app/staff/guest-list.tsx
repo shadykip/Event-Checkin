@@ -119,6 +119,13 @@ export default function GuestList({
         return () => controller.abort();
     }, [open, slug, query, rsvp, page, requestKey]);
 
+    const exportParams = new URLSearchParams({ format: "csv" });
+    if (query) exportParams.set("q", query);
+    if (rsvp) exportParams.set("rsvp", rsvp);
+
+    const exportHref =
+        `/api/staff/events/${encodeURIComponent(slug)}/invitations?${exportParams}`;
+
     function search(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setPage(1);
@@ -222,6 +229,13 @@ export default function GuestList({
                                 Clear
                             </button>
                         )}
+                        <a
+                            href={exportHref}
+                            download
+                            className={`${styles.secondary} inline-flex items-center justify-center`}
+                        >
+                            Download guest list
+                        </a>
                     </form>
 
                     <p role="status" className="text-sm font-medium text-emerald-800">

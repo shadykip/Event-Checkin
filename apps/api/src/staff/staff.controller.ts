@@ -64,20 +64,35 @@ export class StaffController {
 
   @Get('events/:slug/invitations')
   @Header('Cache-Control', 'no-store')
-  listInvitations(
+  async listInvitations(
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('slug') slug: string,
     @Query('page') page: unknown,
     @Query('q') query: unknown,
     @Query('rsvp') rsvp?: unknown,
+    @Query('format') format?: unknown,
   ) {
-    return this.staff.listInvitations(
-      request.cookies?.[cookieName],
-      slug,
-      page,
-      query,
-      rsvp,
-    );
+    const session = request.cookies?.[cookieName];
+
+    if (format === 'csv') {
+      const csv = await this.staff.exportInvitations(
+        session,
+        slug,
+        query,
+        rsvp,
+      );
+      const filename = `${slug.replace(/[^a-zA-Z0-9_-]/g, '_')}-guests.csv`;
+
+      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+      return csv;
+    }
+
+    return this.staff.listInvitations(session, slug, page, query, rsvp);
   }
 
   @Post('events/:slug/invitations')
@@ -109,6 +124,21 @@ export class StaffController {
       request.cookies?.[cookieName],
       slug,
       invitationId,
+    );
+  }
+
+  @Post('events/:slug/invitations/preview')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  previewGuestImport(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('csv') csv: unknown,
+  ) {
+    return this.staff.previewGuestImport(
+      request.cookies?.[cookieName],
+      slug,
+      csv,
     );
   }
 

@@ -78,7 +78,7 @@ export class StaffRepository {
     tx: DbClient,
     eventId: string,
     skip: number,
-    take: number,
+    take: number | undefined,
     query = '',
     rsvpStatus?: RsvpStatus,
   ) {
@@ -113,6 +113,16 @@ export class StaffRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip,
       take,
+    });
+  }
+
+  findInvitedEmails(tx: DbClient, eventId: string, guestEmails: string[]) {
+    return tx.invitation.findMany({
+      where: {
+        eventId,
+        guestEmail: { in: guestEmails, mode: 'insensitive' },
+      },
+      select: { guestEmail: true },
     });
   }
 
