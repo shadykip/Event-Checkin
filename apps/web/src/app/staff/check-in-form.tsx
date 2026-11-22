@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import PassCamera from "./pass-camera";
 import styles from "./staff-styles";
+
 
 type Admission = {
   status: "checked_in" | "already_checked_in";
@@ -38,6 +46,25 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [admission, setAdmission] = useState<Admission | null>(null);
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const scanButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const previousMode = useRef<EntryMode>("idle");
+  const helpId = useId();
+
+  useEffect(() => {
+    const previous = previousMode.current;
+    previousMode.current = mode;
+
+    if (mode === "camera") {
+      headingRef.current?.focus();
+    } else if (mode === "scanned") {
+      confirmButtonRef.current?.focus();
+    } else if (mode === "idle" && previous !== "idle") {
+      scanButtonRef.current?.focus();
+    }
+  }, [mode]);
 
   const value = token.trim();
   const valid = passPattern.test(value);
@@ -100,9 +127,15 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
 
   return (
     <section className={styles.panel}>
-      <h3 className={styles.sectionTitle}>Guest check-in</h3>
+      <h3
+        ref={headingRef}
+        tabIndex={-1}
+        className={`${styles.sectionTitle} rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700`}
+      >
+        Guest check-in
+      </h3>
 
-      <div aria-live="polite" aria-atomic="true">
+      <div role="status" aria-atomic="true">
         {admission && (
           <div
             className={[
@@ -111,7 +144,7 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
               "mt-4",
             ].join(" ")}
           >
-            <strong>
+            <strong className="block break-words text-base">
               {admission.status === "checked_in"
                 ? "Checked in"
                 : "Already checked in"}
@@ -119,7 +152,8 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
               {admission.guestName}
             </strong>
 
-            <p className="mt-1 text-sm">
+            <p className="mt-1 break-words text-sm">
+              {admission.status === "already_checked_in" && "Original check-in: "}
               <time dateTime={admission.checkedInAt}>
                 {admissionTime.format(new Date(admission.checkedInAt))}
               </time>
@@ -133,8 +167,9 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
       {mode === "idle" && (
         <div className={styles.stack}>
           <button
+            ref={scanButtonRef}
             type="button"
-            className={styles.primary}
+            className={`${styles.primary} min-h-12 w-full`}
             onClick={() => begin("camera")}
           >
             {admission ? "Scan next guest" : "Scan guest QR"}
@@ -142,7 +177,7 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
 
           <button
             type="button"
-            className={styles.textButton}
+            className={styles.secondary}
             onClick={() => begin("manual")}
           >
             Enter pass manually
@@ -151,45 +186,46 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
       )}
 
       {mode === "camera" && (
-        <>
-          <PassCamera onRead={acceptScan} onClose={() => begin("idle")} />
-
-          <button
-            type="button"
-            className={styles.textButton}
-            onClick={() => begin("manual")}
-          >
-            Enter pass manually
-          </button>
-        </>
+        <PassCamera
+          onRead={acceptScan}
+          onManual={() => begin("manual")}
+          onClose={() => begin("idle")}
+        />
       )}
 
       {(mode === "manual" || mode === "scanned") && (
         <form className={styles.stack} onSubmit={submit}>
           {mode === "manual" ? (
-            <label className={styles.label}>
-              Guest pass token
+            <div className="grid gap-2">
+              <label className={styles.label}>
+                Guest pass token
+                <input
+                  className={styles.input}
+                  type="password"
+                  value={token}
+                  onChange={(event) => {
+                    setToken(event.target.value);
+                    setError("");
+                  }}
+                  aria-describedby={helpId}
+                  disabled={busy}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoFocus
+                />
+              </label>
 
-              <input
-                className={styles.input}
-                type="password"
-                value={token}
-                onChange={(event) => {
-                  setToken(event.target.value);
-                  setError("");
-                }}
-                disabled={busy}
-                autoComplete="off"
-                spellCheck={false}
-                autoFocus
-              />
-
-              <span className="text-sm font-normal text-slate-600">
-                Paste the 43-character token from the guest pass.
-              </span>
-            </label>
+              <p id={helpId} className="text-sm leading-6 text-slate-600">
+                {value && !valid
+                  ? "Check the token. It must contain 43 letters, numbers, hyphens, or underscores."
+                  : "Paste the 43-character token from the guest pass."}
+              </p>
+            </div>
           ) : (
-            <p role="status">QR captured. Confirm to check in this guest.</p>
+            <p role="status" className="text-sm font-medium text-slate-700">
+              QR captured. Confirm to check in this guest.
+            </p>
           )}
 
           {error && (
@@ -199,8 +235,9 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
           )}
 
           <button
+            ref={confirmButtonRef}
             type="submit"
-            className={styles.primary}
+            className={`${styles.primary} min-h-12 w-full`}
             disabled={busy || !valid}
           >
             {busy ? "Confirming…" : "Confirm check-in"}

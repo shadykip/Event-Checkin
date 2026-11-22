@@ -117,7 +117,7 @@ export default function CreateEventForm({
     }
 
     return (
-        <form onSubmit={submit} className="max-w-4xl space-y-5">
+        <form onSubmit={submit} className="max-w-4xl w-auto space-y-5">
             <fieldset
                 disabled={saving}
                 className="min-w-0 space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"

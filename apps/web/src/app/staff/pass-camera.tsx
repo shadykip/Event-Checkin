@@ -2,15 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import type QrScanner from "qr-scanner";
+import styles from "./staff-styles";
 
 type Props = {
   onRead: (token: string) => void;
+  onManual: () => void;
   onClose: () => void;
 };
 
-export default function PassCamera({ onRead, onClose }: Props) {
+const passPattern = /^[A-Za-z0-9_-]{43}$/;
+
+export default function PassCamera({ onRead, onManual, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [message, setMessage] = useState("Allow camera access to scan a guest pass.");
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [message, setMessage] = useState("Opening the camera…");
 
   useEffect(() => {
     const video = videoRef.current;
@@ -21,9 +27,12 @@ export default function PassCamera({ onRead, onClose }: Props) {
 
     async function start(element: HTMLVideoElement) {
       try {
+        if (!window.isSecureContext) {
+          throw new Error("secure-context");
+        }
+
         if (!navigator.mediaDevices?.getUserMedia) {
-          setMessage("Camera unavailable. Open the staff page over HTTPS or localhost, or enter the token manually.");
-          return;
+          throw new Error("camera-unavailable");
         }
 
         const { default: Scanner } = await import("qr-scanner");
@@ -34,11 +43,12 @@ export default function PassCamera({ onRead, onClose }: Props) {
           ({ data }) => {
             if (closed) return;
 
-            if (!/^[A-Za-z0-9_-]{43}$/.test(data)) {
-              setMessage("This QR is not a guest pass. Aim at the code on the invitation.");
+            if (!passPattern.test(data)) {
+              setMessage("Aim at the QR code shown on the guest’s invitation.");
               return;
             }
 
+            // Ignore repeated frames while React switches to confirmation.
             closed = true;
             onRead(data);
           },
@@ -49,12 +59,32 @@ export default function PassCamera({ onRead, onClose }: Props) {
         );
 
         await scanner.start();
-        if (!closed) setMessage("Hold the guest’s QR code inside the camera view.");
-      } catch {
+
         if (!closed) {
-          scanner?.destroy();
-          scanner = undefined;
-          setMessage("Could not open the camera. Check camera permissions or enter the token manually.");
+          setMessage("Point the camera at the guest’s QR code.");
+        }
+      } catch (cause) {
+        if (closed) return;
+
+        scanner?.destroy();
+        scanner = undefined;
+        setFailed(true);
+
+        if (cause instanceof Error && cause.message === "secure-context") {
+          setMessage(
+            "Camera access requires HTTPS on this device. You can enter the pass manually.",
+          );
+        } else if (
+          cause instanceof Error &&
+          cause.message === "camera-unavailable"
+        ) {
+          setMessage(
+            "This browser has no available camera. Enter the pass manually.",
+          );
+        } else {
+          setMessage(
+            "Couldn’t open the camera. Allow camera access in your browser and retry, or enter the pass manually.",
+          );
         }
       }
     }
@@ -65,21 +95,47 @@ export default function PassCamera({ onRead, onClose }: Props) {
       closed = true;
       scanner?.destroy();
     };
-  }, [onRead]);
+  }, [attempt, onRead]);
+
+  function retry() {
+    setFailed(false);
+    setMessage("Opening the camera…");
+    setAttempt((current) => current + 1);
+  }
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-4 grid min-w-0 gap-3">
+      <p role="status" aria-atomic="true" className="text-sm leading-6 text-slate-700">
+        {message}
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={styles.secondary} onClick={onManual}>
+          Enter pass manually
+        </button>
+
+        {failed && (
+          <button type="button" className={styles.secondary} onClick={retry}>
+            Retry camera
+          </button>
+        )}
+
+        <button type="button" className={styles.textButton} onClick={onClose}>
+          Close camera
+        </button>
+      </div>
+
       <video
         ref={videoRef}
         muted
         playsInline
-        aria-label="Guest pass camera preview"
-        className="aspect-video w-full rounded-lg bg-black object-cover"
+        aria-label="Guest QR camera preview"
+        className={
+          failed
+            ? "hidden"
+            : "aspect-video max-h-[42dvh] w-full rounded-xl bg-slate-950 object-contain"
+        }
       />
-      <p role="status" className="text-sm text-stone-700">{message}</p>
-      <button type="button" onClick={onClose} className="text-sm underline">
-        Close camera
-      </button>
     </div>
   );
 }

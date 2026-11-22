@@ -112,12 +112,12 @@ export default function PasswordRecoveryForm({ mode }: Props) {
                                         name="password"
                                         autoComplete="new-password"
                                         aria-describedby="password-help"
-                                        minLength={15}
+                                        minLength={8}
                                         maxLength={128}
                                         required
                                     />
                                     <span id="password-help" className="text-sm font-normal text-slate-600">
-                                        Use 15 to 128 characters. A passphrase is fine.
+                                        Use 8 to 128 characters. A passphrase is fine.
                                     </span>
                                 </label>
 
@@ -128,7 +128,7 @@ export default function PasswordRecoveryForm({ mode }: Props) {
                                         type="password"
                                         name="confirmation"
                                         autoComplete="new-password"
-                                        minLength={15}
+                                        minLength={8}
                                         maxLength={128}
                                         required
                                     />
