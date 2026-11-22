@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import styles from "./staff-styles";
+import IssuePreviewInvitations from "./issue-preview-invitations";
 
 type Status = "ready" | "invalid" | "duplicate" | "existing";
 
@@ -16,15 +17,22 @@ type Preview = {
     }[];
 };
 
-export default function GuestImportPreview({ slug }: { slug: string }) {
+export default function GuestImportPreview({
+    slug,
+    onIssued,
+}: {
+    slug: string;
+    onIssued: () => void;
+}) {
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<Preview | null>(null);
     const [busy, setBusy] = useState(false);
+    const [issuing, setIssuing] = useState(false);
     const [error, setError] = useState("");
 
     async function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!file || busy) return;
+        if (!file || busy || issuing) return;
 
         setPreview(null);
         setError("");
@@ -79,7 +87,8 @@ export default function GuestImportPreview({ slug }: { slug: string }) {
                         type="file"
                         accept=".csv,text/csv"
                         required
-                        disabled={busy}
+                        disabled={busy || issuing}
+
                         className={styles.input}
                         onChange={(event) => {
                             setFile(event.target.files?.[0] ?? null);
@@ -91,7 +100,8 @@ export default function GuestImportPreview({ slug }: { slug: string }) {
                         Columns: guestName, guestEmail. Up to 200 guests, 32 KiB.
                     </span>
                 </label>
-                <button type="submit" className={styles.secondary} disabled={!file || busy}>
+                <button type="submit" className={styles.secondary}
+                    disabled={!file || busy || issuing}>
                     {busy ? "Checking guests…" : "Preview file"}
                 </button>
             </form>
@@ -105,6 +115,14 @@ export default function GuestImportPreview({ slug }: { slug: string }) {
                         {" · "}Duplicates in file: {preview.summary.duplicate}
                         {" · "}Already invited: {preview.summary.existing}
                     </p>
+
+                    <IssuePreviewInvitations
+                        slug={slug}
+                        rows={preview.rows}
+                        onIssued={onIssued}
+                        onBusyChange={setIssuing}
+                    />
+
                     <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
                         <table className="w-full text-left text-sm">
                             <caption className="sr-only">Guest import preview</caption>
@@ -131,6 +149,8 @@ export default function GuestImportPreview({ slug }: { slug: string }) {
                     </div>
                 </div>
             )}
+
+
         </details>
     );
 }

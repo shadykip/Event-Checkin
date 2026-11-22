@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import GuestRsvp, { type RsvpStatus } from "./guest-rsvp";
 
+
 type Invitation = {
   guestName: string;
   rsvpStatus: RsvpStatus;

@@ -30,7 +30,7 @@ export default function EventOperations({ slug, role }: Props) {
             {role === "ORGANIZER" && (
                 <>
                     <InviteGuestForm slug={slug} onIssued={refreshAttendance} />
-                    <GuestImportPreview slug={slug} />
+                    <GuestImportPreview slug={slug} onIssued={refreshAttendance} />
                     <GuestList
                         slug={slug}
                         version={attendanceVersion}
