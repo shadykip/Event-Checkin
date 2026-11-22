@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
 import RevokePassButton from "./revoke-pass-button";
+import ReplacePassButton from "./replace-pass-button";
 
 
 type GuestStatus = "expected" | "checked_in" | "revoked";
@@ -304,14 +305,17 @@ export default function GuestList({
                                                     </td>
                                                     <td className="py-3 pl-3 align-top">
                                                         {guest.status === "expected" && (
-                                                            <RevokePassButton
-                                                                slug={slug}
-                                                                guest={guest}
-                                                                onRevoked={(guestName) => {
-                                                                    setNotice(`Pass revoked for ${guestName}.`);
-                                                                    onRevoked();
-                                                                }}
-                                                            />
+                                                            <div className="flex flex-col items-start gap-2">
+                                                                <ReplacePassButton slug={slug} guest={guest} />
+                                                                <RevokePassButton
+                                                                    slug={slug}
+                                                                    guest={guest}
+                                                                    onRevoked={(guestName) => {
+                                                                        setNotice(`Pass revoked for ${guestName}.`);
+                                                                        onRevoked();
+                                                                    }}
+                                                                />
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>

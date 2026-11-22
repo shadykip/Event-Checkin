@@ -199,6 +199,40 @@ export class StaffRepository {
     };
   }
 
+  async replacePassHash(
+    tx: DbClient,
+    eventId: string,
+    invitationId: string,
+    tokenHash: string,
+  ): Promise<'replaced' | 'missing' | 'unavailable'> {
+    const [invitation] = await tx.$queryRaw<
+      { id: string; revokedAt: Date | null }[]
+    >`
+      SELECT id, revoked_at AS "revokedAt"
+      FROM invitations
+      WHERE id = ${invitationId}::uuid
+        AND event_id = ${eventId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!invitation) return 'missing';
+    if (invitation.revokedAt) return 'unavailable';
+
+    const admission = await tx.checkIn.findUnique({
+      where: { invitationId },
+      select: { invitationId: true },
+    });
+
+    if (admission) return 'unavailable';
+
+    await tx.invitation.update({
+      where: { id: invitationId },
+      data: { tokenHash },
+    });
+
+    return 'replaced';
+  }
+
   async revokeInvitation(tx: DbClient, eventId: string, invitationId: string) {
     const [invitation] = await tx.$queryRaw<{ id: string; revokedAt: Date }[]>`
     UPDATE invitations

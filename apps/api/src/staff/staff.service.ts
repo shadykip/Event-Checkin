@@ -398,6 +398,32 @@ export class StaffService {
     });
   }
 
+  replacePass(sessionToken: unknown, slug: string, invitationId: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const token = randomBytes(32).toString('base64url');
+
+      const result = await this.repository.replacePassHash(
+        tx,
+        eventId,
+        invitationId,
+        hashToken(token),
+      );
+
+      if (result === 'missing') {
+        throw new NotFoundException('Invitation not found for this event.');
+      }
+
+      if (result === 'unavailable') {
+        throw new ConflictException(
+          'Only active passes for guests who have not checked in can be replaced.',
+        );
+      }
+
+      return { passPath: `/pass#${token}` };
+    });
+  }
+
   revokeInvitation(sessionToken: unknown, slug: string, invitationId: string) {
     return this.repository.transaction(async (tx) => {
       const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);

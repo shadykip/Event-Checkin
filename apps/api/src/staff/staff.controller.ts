@@ -5,6 +5,7 @@ import {
   Header,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -139,6 +140,21 @@ export class StaffController {
       request.cookies?.[cookieName],
       slug,
       csv,
+    );
+  }
+
+  @Post('events/:slug/invitations/:invitationId/replace-pass')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  replacePass(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ) {
+    return this.staff.replacePass(
+      request.cookies?.[cookieName],
+      slug,
+      invitationId,
     );
   }
 
