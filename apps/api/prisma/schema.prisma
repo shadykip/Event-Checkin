@@ -8,6 +8,8 @@ model Event {
   slug      String   @unique
   venue     String
   startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
+  description String?
+  banner      EventBanner?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -17,6 +19,15 @@ model Event {
   checkInInvitationId String?                @db.Uuid
 
   @@map("events")
+}
+
+
+model EventBanner {
+  eventId String @id @map("event_id") @db.Uuid
+  image   Bytes
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("event_banners")
 }
 
 enum RsvpStatus {

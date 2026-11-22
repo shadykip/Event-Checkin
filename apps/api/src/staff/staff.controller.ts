@@ -10,9 +10,13 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StaffService } from './staff.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { maxEventBannerBytes } from './event-banner';
 
 const cookieName = 'staff_session';
 
@@ -56,18 +60,48 @@ export class StaffController {
   @Post('events')
   @HttpCode(201)
   @Header('Cache-Control', 'no-store')
+  @UseInterceptors(
+    FileInterceptor('banner', {
+      limits: {
+        fileSize: maxEventBannerBytes,
+        files: 1,
+        fields: 4,
+        fieldSize: 16 * 1024,
+        parts: 6,
+      },
+    }),
+  )
   createEvent(
     @Req() request: Request,
     @Body('name') name: unknown,
     @Body('venue') venue: unknown,
     @Body('startsAt') startsAt: unknown,
+    @Body('description') description: unknown,
+    @UploadedFile() banner?: Express.Multer.File,
   ) {
     return this.staff.createEvent(
       request.cookies?.[cookieName],
       name,
       venue,
       startsAt,
+      description,
+      banner,
     );
+  }
+
+  @Get('events/:slug/banner')
+  @Header('Cache-Control', 'private, no-store')
+  async eventBanner(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Res() response: Response,
+  ) {
+    const image = await this.staff.getEventBanner(
+      request.cookies?.[cookieName],
+      slug,
+    );
+
+    response.type('image/webp').send(image);
   }
 
   @Post('events/:slug/check-ins')

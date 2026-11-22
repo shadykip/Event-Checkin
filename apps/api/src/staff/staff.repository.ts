@@ -86,10 +86,14 @@ export class StaffRepository {
       slug: string;
       venue: string;
       startsAt: Date;
+      description?: string;
+      bannerImage?: Uint8Array<ArrayBuffer>;
     },
   ) {
+    const { bannerImage, ...eventData } = input;
+
     const inserted = await tx.event.createMany({
-      data: [input],
+      data: [eventData],
       skipDuplicates: true,
     });
 
@@ -103,8 +107,19 @@ export class StaffRepository {
         slug: true,
         venue: true,
         startsAt: true,
+        description: true,
       },
     });
+
+    if (bannerImage) {
+      await tx.eventBanner.create({
+        data: {
+          eventId: event.id,
+          image: bannerImage,
+        },
+        select: { eventId: true },
+      });
+    }
 
     const assignment = await tx.eventStaffAssignment.create({
       data: {
@@ -121,6 +136,8 @@ export class StaffRepository {
       venue: event.venue,
       startsAt: event.startsAt,
       role: assignment.role,
+      description: event.description,
+      hasBanner: Boolean(bannerImage),
     };
   }
 
@@ -135,13 +152,32 @@ export class StaffRepository {
             slug: true,
             venue: true,
             startsAt: true,
+            description: true,
+            banner: {
+              select: { eventId: true },
+            },
           },
         },
       },
       orderBy: [{ event: { startsAt: 'asc' } }, { event: { slug: 'asc' } }],
     });
 
-    return assignments.map(({ event, role }) => ({ ...event, role }));
+    return assignments.map(({ event, role }) => {
+      const { banner, ...details } = event;
+
+      return {
+        ...details,
+        role,
+        hasBanner: banner !== null,
+      };
+    });
+  }
+
+  findEventBanner(tx: DbClient, eventId: string) {
+    return tx.eventBanner.findUnique({
+      where: { eventId },
+      select: { image: true },
+    });
   }
 
   listInvitations(

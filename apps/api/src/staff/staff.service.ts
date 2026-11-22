@@ -14,6 +14,7 @@ import { parseGuestCsv, validateGuest } from './guest-import';
 import { guestRosterCsv } from './guest-roster-csv';
 import { sendInvitationEmail } from './invitation-mailer';
 import { StaffRepository, type AdmissionStatus } from './staff.repository';
+import { prepareEventBanner } from './event-banner';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const rosterPageSize = 25;
@@ -75,6 +76,8 @@ export class StaffService {
     rawName: unknown,
     rawVenue: unknown,
     rawStartsAt: unknown,
+    rawDescription?: unknown,
+    bannerFile?: Express.Multer.File,
   ) {
     return this.repository.transaction(async (tx) => {
       const staff = await this.requireStaff(tx, sessionToken);
@@ -131,11 +134,28 @@ export class StaffService {
       }
 
       const slug = `${baseSlug}-${rawStartsAt.slice(0, 10)}`;
+
+      if (rawDescription !== undefined && typeof rawDescription !== 'string') {
+        throw new BadRequestException('Enter a valid event description.');
+      }
+
+      const description =
+        typeof rawDescription === 'string' ? rawDescription.trim() : '';
+
+      if (description.length > 3000) {
+        throw new BadRequestException(
+          'Keep the event description within 3,000 characters.',
+        );
+      }
+
+      const bannerImage = await prepareEventBanner(bannerFile);
       const event = await this.repository.createAssignedEvent(tx, staff.id, {
         name,
         slug,
         venue,
         startsAt,
+        description: description || undefined,
+        bannerImage,
       });
 
       if (!event) {
@@ -145,6 +165,19 @@ export class StaffService {
       }
 
       return event;
+    });
+  }
+
+  getEventBanner(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireAssignment(tx, sessionToken, slug);
+      const banner = await this.repository.findEventBanner(tx, eventId);
+
+      if (!banner) {
+        throw new NotFoundException('This event has no banner.');
+      }
+
+      return Buffer.from(banner.image);
     });
   }
 

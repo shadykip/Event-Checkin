@@ -28,22 +28,43 @@ const timeFormat = new Intl.DateTimeFormat("en-KE", {
     timeZone: "Africa/Nairobi",
 });
 
-function EventBanner({ slug }: { slug: string }) {
-    const [failedSource, setFailedSource] = useState<string | null>(null);
-    const customBanner = eventBanners[slug];
-    const source =
-        customBanner && failedSource !== customBanner ? customBanner : defaultBanner;
+export function EventBanner({
+    slug,
+    hasBanner = false,
+    wide = false,
+}: {
+    slug: string;
+    hasBanner?: boolean;
+    wide?: boolean;
+}) {
+    const [failedSources, setFailedSources] = useState<string[]>([]);
+
+    const candidates = [
+        ...(hasBanner ? [`/api/staff/events/${encodeURIComponent(slug)}/banner`] : []),
+        ...(eventBanners[slug] ? [eventBanners[slug]] : []),
+        defaultBanner,
+    ];
+
+    const source = candidates.find((candidate) => !failedSources.includes(candidate));
 
     return (
-        <div className="relative aspect-[2.3/1] overflow-hidden bg-gradient-to-br from-teal-800 via-slate-800 to-slate-950">
-            {failedSource !== defaultBanner && (
+        <div
+            className={`relative overflow-hidden bg-gradient-to-br from-teal-800 via-slate-800 to-slate-950 ${wide ? "h-48 bg-slate-950 sm:h-72" : "aspect-[2/1]"
+                }`}
+        >
+            {source && (
                 <Image
                     src={source}
                     alt=""
                     fill
-                    sizes="(min-width: 1280px) 27vw, (min-width: 640px) 45vw, 100vw"
-                    className="object-cover transition-transform duration-300 motion-safe:group-hover:scale-105"
-                    onError={() => setFailedSource(source)}
+                    unoptimized={source.startsWith("/api/staff/")}
+                    sizes={wide ? "100vw" : "(min-width: 1280px) 27vw, (min-width: 640px) 45vw, 100vw"}
+                    className={wide ? "object-contain" : "object-cover"}
+                    onError={() =>
+                        setFailedSources((previous) =>
+                            previous.includes(source) ? previous : [...previous, source],
+                        )
+                    }
                 />
             )}
         </div>
@@ -95,7 +116,7 @@ export default function EventDirectory({
                                 href={`/staff/events/${encodeURIComponent(event.slug)}?page=${page}`}
                                 className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700"
                             >
-                                <EventBanner slug={event.slug} />
+                                <EventBanner slug={event.slug} hasBanner={event.hasBanner} />
 
                                 <div className="flex flex-1 flex-col p-5">
                                     <span className="mb-3 w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">

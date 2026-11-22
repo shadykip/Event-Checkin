@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+
 import EventOperations from "./event-operations";
 import styles from "./staff-styles";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import EventDirectory from "./event-directory";
+
+import CreateEventForm from "./create-event-form";
+import EventDirectory, { EventBanner } from "./event-directory";
 
 export type StaffEvent = {
     name: string;
     slug: string;
     venue: string;
     startsAt: string;
+    description?: string | null;
+    hasBanner?: boolean;
     role: "DOOR_STAFF" | "ORGANIZER";
 };
 
@@ -41,103 +45,6 @@ const eventDate = new Intl.DateTimeFormat("en-KE", {
 
 function formatDate(value: string) {
     return `${eventDate.format(new Date(value))} · Nairobi time`;
-}
-
-function CreateEventForm({ onCreated }: { onCreated: (event: StaffEvent) => void }) {
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
-
-    async function submit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        if (saving) return;
-
-        const form = new FormData(event.currentTarget);
-        setSaving(true);
-        setError("");
-
-        try {
-            const response = await fetch("/api/staff/events", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: form.get("name"),
-                    venue: form.get("venue"),
-                    startsAt: form.get("startsAt"),
-                }),
-            });
-
-            if (!response.ok) {
-                const body = await response.json().catch(() => null);
-                setError(
-                    response.status === 401
-                        ? "Your session expired. Sign in again."
-                        : typeof body?.message === "string"
-                            ? body.message
-                            : "Could not create the event. Please try again.",
-                );
-                return;
-            }
-
-            const created: StaffEvent = await response.json();
-            onCreated(created);
-        } catch {
-            setError("Connection interrupted. Check My events before retrying.");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    return (
-        <form
-            onSubmit={submit}
-            className="grid max-w-2xl gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
-        >
-            <label className={styles.label}>
-                Event name
-                <input
-                    className={styles.input}
-                    name="name"
-                    maxLength={160}
-                    placeholder="Nairobi Developer Meetup"
-                    required
-                />
-            </label>
-
-            <label className={styles.label}>
-                Venue
-                <input
-                    className={styles.input}
-                    name="venue"
-                    maxLength={200}
-                    placeholder="Demo Hall, Nairobi"
-                    required
-                />
-            </label>
-
-            <label className={styles.label}>
-                Start date and time
-                <input
-                    className={styles.input}
-                    name="startsAt"
-                    type="datetime-local"
-                    required
-                />
-                <span className="text-sm font-normal text-slate-600">
-                    Enter the time in Nairobi (UTC+3).
-                </span>
-            </label>
-
-            {error && (
-                <p role="alert" className={`${styles.feedback} ${styles.error}`}>
-                    {error}
-                </p>
-            )}
-
-            <button type="submit" disabled={saving} className={`${styles.primary} w-fit`}>
-                {saving ? "Creating event…" : "Create event"}
-            </button>
-        </form>
-    );
 }
 
 export default function StaffDashboard({
@@ -350,6 +257,14 @@ export default function StaffDashboard({
 
                         {selected ? (
                             <article className={styles.card}>
+                                {selected.hasBanner && (
+                                    <EventBanner
+                                        key={selected.slug}
+                                        slug={selected.slug}
+                                        hasBanner
+                                        wide
+                                    />
+                                )}
                                 <header className={styles.eventHeader}>
                                     <div className="min-w-0">
                                         <h2 className={styles.eventName}>{selected.name}</h2>
@@ -368,6 +283,15 @@ export default function StaffDashboard({
                                         {selected.role === "ORGANIZER" ? "Organizer" : "Door staff"}
                                     </span>
                                 </header>
+
+                                {selected.description && (
+                                    <section className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
+                                        <h2 className="text-base font-semibold text-slate-950">About this event</h2>
+                                        <p className="mt-2 whitespace-pre-line break-words text-sm leading-7 text-slate-700">
+                                            {selected.description}
+                                        </p>
+                                    </section>
+                                )}
 
                                 <EventOperations
                                     key={selected.slug}
