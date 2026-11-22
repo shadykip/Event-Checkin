@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import GuestRsvp, { type RsvpStatus } from "./guest-rsvp";
+import AddToCalendar from "./add-to-calendar";
 
 
 type Invitation = {
   guestName: string;
   rsvpStatus: RsvpStatus;
   event: {
+    id: string;
     name: string;
     venue: string;
     startsAt: string;
@@ -113,6 +115,7 @@ export default function GuestPassPage() {
                   </dd>
                 </div>
               </dl>
+              <AddToCalendar event={view.invitation.event} />
 
               <figure className="mt-7 border-t border-stone-200 pt-6 text-center">
                 <QRCodeSVG

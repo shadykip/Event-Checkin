@@ -21,6 +21,7 @@ export class InvitationsRepository {
         rsvpRespondedAt: true,
         event: {
           select: {
+            id: true,
             name: true,
             venue: true,
             startsAt: true,
