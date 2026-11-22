@@ -93,6 +93,14 @@ const nextConfig: NextConfig = {
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-allocation`,
       },
       {
+        source: "/api/staff/events/:slug/ticket-tiers",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-tiers`,
+      },
+      {
+        source: "/api/staff/events/:slug/ticket-tiers/:tierId",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-tiers/:tierId`,
+      },
+      {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,
       },

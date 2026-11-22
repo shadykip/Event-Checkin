@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, type RsvpStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { parseTicketTier } from './ticket-tier-input';
 
 type DbClient = Prisma.TransactionClient;
 
@@ -558,6 +559,50 @@ export class StaffRepository {
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },
+    });
+  }
+
+  // Ticket tiers
+
+  listTicketTiers(tx: DbClient, eventId: string) {
+    return tx.ticketTier.findMany({
+      where: { eventId },
+      select: {
+        id: true,
+        name: true,
+        priceMinor: true,
+        currency: true,
+        capacity: true,
+        salesStartAt: true,
+        salesEndAt: true,
+        archived: true,
+        version: true,
+      },
+      orderBy: [{ archived: 'asc' }, { priceMinor: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  createTicketTier(
+    tx: DbClient,
+    eventId: string,
+    data: ReturnType<typeof parseTicketTier>,
+  ) {
+    return tx.ticketTier.create({
+      data: { eventId, ...data },
+      select: { id: true },
+    });
+  }
+
+  updateTicketTier(
+    tx: DbClient,
+    eventId: string,
+    id: string,
+    version: number,
+    data: ReturnType<typeof parseTicketTier>,
+  ) {
+    return tx.ticketTier.updateMany({
+      where: { id, eventId, version },
+      data: { ...data, version: { increment: 1 } },
     });
   }
 }

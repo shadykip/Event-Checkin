@@ -20,6 +20,7 @@ import {
 import { StaffRepository, type AdmissionStatus } from './staff.repository';
 import { prepareEventBanner } from './event-banner';
 import { parseEventDetails } from './event-details';
+import { parseTicketTier, type TicketTierInput } from './ticket-tier-input';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const rosterPageSize = 25;
@@ -766,6 +767,77 @@ export class StaffService {
 
       return this.repository.saveTicketAllocation(tx, eventId, capacity);
     });
+  }
+
+  listTicketTiers(session: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, session, slug);
+      return this.repository.listTicketTiers(tx, eventId);
+    });
+  }
+
+  async saveTicketTier(
+    session: unknown,
+    slug: string,
+    input: TicketTierInput,
+    tierId?: string,
+  ) {
+    try {
+      return await this.repository.transaction(async (tx) => {
+        const { eventId } = await this.requireOrganizer(tx, session, slug);
+
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+          throw new BadRequestException('Enter the ticket details.');
+        }
+
+        const data = parseTicketTier(input);
+
+        if (tierId) {
+          const version = input.version;
+
+          if (
+            typeof version !== 'number' ||
+            !Number.isSafeInteger(version) ||
+            version < 1
+          ) {
+            throw new BadRequestException(
+              'A valid ticket version is required.',
+            );
+          }
+
+          const result = await this.repository.updateTicketTier(
+            tx,
+            eventId,
+            tierId,
+            version,
+            data,
+          );
+
+          if (result.count !== 1) {
+            throw new ConflictException(
+              'This tier changed or is unavailable. Reload the tiers before editing.',
+            );
+          }
+        } else {
+          await this.repository.createTicketTier(tx, eventId, data);
+        }
+
+        return this.repository.listTicketTiers(tx, eventId);
+      });
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'This event already has a tier with that name.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async logout(sessionToken: unknown): Promise<void> {
