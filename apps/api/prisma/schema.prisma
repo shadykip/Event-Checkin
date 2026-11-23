@@ -125,16 +125,17 @@ model Invitation {
 }
 
 model StaffAccount {
-  id              String                 @id @default(uuid()) @db.Uuid
-  name            String
-  email           String                 @unique
-  passwordHash    String                 @map("password_hash")
-  isActive        Boolean                @default(true) @map("is_active")
-  canCreateEvents Boolean                @default(false) @map("can_create_events")
-  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  assignments     EventStaffAssignment[]
-  sessions        StaffSession[]
-  checkIns        CheckIn[]
+  id               String                 @id @default(uuid()) @db.Uuid
+  name             String
+  email            String                 @unique
+  passwordHash     String                 @map("password_hash")
+  isActive         Boolean                @default(true) @map("is_active")
+  canCreateEvents  Boolean                @default(false) @map("can_create_events")
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  assignments      EventStaffAssignment[]
+  sessions         StaffSession[]
+  checkIns         CheckIn[]
+  admissionBatches AdmissionBatch[]
 
   resetTokenHash   String?   @unique @map("reset_token_hash") @db.Char(64)
   resetExpiresAt   DateTime? @map("reset_expires_at") @db.Timestamptz(3)
@@ -143,14 +144,31 @@ model StaffAccount {
   @@map("staff_accounts")
 }
 
+model AdmissionBatch {
+  invitationId  String   @map("invitation_id") @db.Uuid
+  requestId     String   @map("request_id") @db.Uuid
+  staffId       String   @map("staff_id") @db.Uuid
+  quantity      Int
+  admittedAfter Int      @map("admitted_after")
+  checkedInAt   DateTime @default(now()) @map("checked_in_at") @db.Timestamptz(3)
+
+  checkIn CheckIn      @relation(fields: [invitationId], references: [invitationId], onDelete: Restrict)
+  staff   StaffAccount @relation(fields: [staffId], references: [id], onDelete: Restrict)
+
+  @@id([invitationId, requestId])
+  @@unique([invitationId, admittedAfter])
+  @@map("admission_batches")
+}
+
 model CheckIn {
   invitationId String   @id @map("invitation_id") @db.Uuid
   staffId      String   @map("staff_id") @db.Uuid
   checkedInAt  DateTime @default(now()) @map("checked_in_at") @db.Timestamptz(3)
 
-  invitation Invitation   @relation(fields: [invitationId], references: [id], onDelete: Restrict)
-  staff      StaffAccount @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  invitation Invitation       @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+  staff      StaffAccount     @relation(fields: [staffId], references: [id], onDelete: Restrict)
   events     Event[]
+  batches    AdmissionBatch[]
 
   @@index([staffId])
   @@map("check_ins")

@@ -1,262 +1,208 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import PassCamera from "./pass-camera";
 import styles from "./staff-styles";
 
-
-type Admission = {
-  status: "checked_in" | "already_checked_in";
+type Balance = {
+  status: "preview" | "checked_in" | "already_checked_in" | "confirmation_replayed";
   guestName: string;
-  checkedInAt: string;
-  checkedInBy: string;
-  ticketTier?: string | null;
+  ticketTier: string | null;
+  capacity: number;
+  admitted: number;
+  remaining: number;
+  quantity?: number;
+  checkedInAt: string | null;
+  checkedInBy: string | null;
 };
 
-type EntryMode = "idle" | "camera" | "manual" | "scanned";
+type Mode = "idle" | "camera" | "manual" | "captured";
+type Attempt = { requestId: string; quantity: number };
 
-const passPattern = /^[A-Za-z0-9_-]{43}$/;
-
-const admissionTime = new Intl.DateTimeFormat("en-KE", {
+const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const time = new Intl.DateTimeFormat("en-KE", {
   dateStyle: "medium",
   timeStyle: "medium",
   timeZone: "Africa/Nairobi",
 });
 
-const checkInErrors: Record<number, string> = {
-  401: "Your session expired. Refresh this page to sign in.",
-  403: "You are no longer assigned to this event.",
-  404: "This pass is unavailable for this event. Check the invitation and event name.",
-};
-
-type CheckInFormProps = {
-  slug: string;
-  onConfirmed: () => void;
-};
-
-export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
-  const [mode, setMode] = useState<EntryMode>("idle");
+export default function CheckInForm({
+  slug, onConfirmed,
+}: { slug: string; onConfirmed: () => void }) {
+  const [mode, setMode] = useState<Mode>("idle");
   const [token, setToken] = useState("");
+  const [balance, setBalance] = useState<Balance | null>(null);
+  const [quantity, setQuantity] = useState("1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [admission, setAdmission] = useState<Admission | null>(null);
+  const [attempt, setAttempt] = useState<Attempt | null>(null);
+  const running = useRef(false);
 
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const scanButtonRef = useRef<HTMLButtonElement>(null);
-  const confirmButtonRef = useRef<HTMLButtonElement>(null);
-  const previousMode = useRef<EntryMode>("idle");
-  const helpId = useId();
-
-  useEffect(() => {
-    const previous = previousMode.current;
-    previousMode.current = mode;
-
-    if (mode === "camera") {
-      headingRef.current?.focus();
-    } else if (mode === "scanned") {
-      confirmButtonRef.current?.focus();
-    } else if (mode === "idle" && previous !== "idle") {
-      scanButtonRef.current?.focus();
-    }
-  }, [mode]);
-
-  const value = token.trim();
-  const valid = passPattern.test(value);
-
-  function begin(next: "idle" | "camera" | "manual") {
+  function begin(next: Mode) {
     setToken("");
+    setBalance(null);
+    setQuantity("1");
+    setAttempt(null);
     setError("");
-    setAdmission(null);
     setMode(next);
   }
 
-  const acceptScan = useCallback((scannedToken: string) => {
-    setToken(scannedToken);
+  const acceptScan = useCallback((value: string) => {
+    setToken(value);
+    setMode("captured");
     setError("");
-    setMode("scanned");
   }, []);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function send(action: "preview" | "admit") {
+    if (running.current || !tokenPattern.test(token.trim())) return;
 
-    if (busy || !valid) return;
+    const count = Number(quantity);
+    let confirmation = attempt;
+    if (action === "admit" && !confirmation) {
+      if (!balance || !Number.isSafeInteger(count) || count < 1 || count > balance.remaining) return;
+      confirmation = { requestId: crypto.randomUUID(), quantity: count };
+      setAttempt(confirmation);
+    }
 
+    running.current = true;
     setBusy(true);
     setError("");
-    setAdmission(null);
 
     try {
-      const response = await fetch(
-        `/api/staff/events/${encodeURIComponent(slug)}/check-ins`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: value }),
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(`/api/staff/events/${encodeURIComponent(slug)}/check-ins`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          token: token.trim(),
+          action,
+          ...(action === "admit" ? confirmation : {}),
+        }),
+      });
 
+      const data = await response.json();
       if (!response.ok) {
+        if (response.status >= 500) throw new Error("Unknown outcome");
         setError(
-          checkInErrors[response.status] ??
-          "Admission could not be confirmed. Retry with the same pass.",
+          typeof data.message === "string" ? data.message : "Could not check this pass.",
         );
+        setAttempt(null);
+        setBalance(null);
         return;
       }
 
-      const result: Admission = await response.json();
+      setBalance(data as Balance);
+      setAttempt(null);
+      setQuantity("1");
 
-      setAdmission(result);
-      setToken("");
-      setMode("idle");
-      onConfirmed();
+      if (action === "admit") {
+        setToken("");
+        setMode("idle");
+        onConfirmed();
+      }
     } catch {
-      setError(
-        "Connection interrupted. Retry with the same pass to confirm admission.",
-      );
+      setError(action === "admit"
+        ? "Confirmation interrupted. Retry this confirmation before admitting anyone else."
+        : "Could not read the pass. Try again.");
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }
 
+  function preview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void send("preview");
+  }
+
+  const inspecting = balance?.status === "preview";
+  const canConfirm = Number.isInteger(Number(quantity)) &&
+    Number(quantity) >= 1 && Number(quantity) <= (balance?.remaining ?? 0);
+
   return (
     <section className={styles.panel}>
-      <h3
-        ref={headingRef}
-        tabIndex={-1}
-        className={`${styles.sectionTitle} rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700`}
-      >
-        Guest check-in
-      </h3>
-
-      <div role="status" aria-atomic="true">
-        {admission && (
-          <div
-            className={[
-              styles.feedback,
-              admission.status === "checked_in" ? styles.success : styles.repeat,
-              "mt-4",
-            ].join(" ")}
-          >
-            <strong className="block break-words text-base">
-              {admission.status === "checked_in"
-                ? "Checked in"
-                : "Already checked in"}
-              {" — "}
-              {admission.guestName}
-            </strong>
-
-            <p className="mt-1 break-words text-sm">
-              {admission.status === "already_checked_in" && "Original check-in: "}
-              <time dateTime={admission.checkedInAt}>
-                {admissionTime.format(new Date(admission.checkedInAt))}
-              </time>
-              {" · Nairobi time · "}
-              {admission.checkedInBy}
-            </p>
-
-            {admission.ticketTier && (
-              <p className="mt-1 text-sm font-semibold">Ticket · {admission.ticketTier}</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {mode === "idle" && (
-        <div className={styles.stack}>
-          <button
-            ref={scanButtonRef}
-            type="button"
-            className={`${styles.primary} min-h-12 w-full`}
-            onClick={() => begin("camera")}
-          >
-            {admission ? "Scan next guest" : "Scan guest QR"}
-          </button>
-
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => begin("manual")}
-          >
-            Enter pass manually
-          </button>
-        </div>
-      )}
+      <h3 className={styles.sectionTitle}>Guest check-in</h3>
 
       {mode === "camera" && (
-        <PassCamera
-          onRead={acceptScan}
-          onManual={() => begin("manual")}
-          onClose={() => begin("idle")}
-        />
+        <PassCamera onRead={acceptScan} onManual={() => begin("manual")} onClose={() => begin("idle")} />
       )}
 
-      {(mode === "manual" || mode === "scanned") && (
-        <form className={styles.stack} onSubmit={submit}>
+      {!balance && (mode === "manual" || mode === "captured") && (
+        <form className={styles.stack} onSubmit={preview}>
           {mode === "manual" ? (
-            <div className="grid gap-2">
-              <label className={styles.label}>
-                Guest pass token
-                <input
-                  className={styles.input}
-                  type="password"
-                  value={token}
-                  onChange={(event) => {
-                    setToken(event.target.value);
-                    setError("");
-                  }}
-                  aria-describedby={helpId}
-                  disabled={busy}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  autoFocus
-                />
-              </label>
+            <label className={styles.label}>
+              Guest pass token
+              <input
+                className={styles.input} type="password" value={token}
+                onChange={(event) => { setToken(event.target.value); setError(""); }}
+                disabled={busy} autoFocus autoComplete="off" autoCapitalize="none" spellCheck={false}
+              />
+            </label>
+          ) : <p role="status">QR captured. View the pass to check its balance.</p>}
 
-              <p id={helpId} className="text-sm leading-6 text-slate-600">
-                {value && !valid
-                  ? "Check the token. It must contain 43 letters, numbers, hyphens, or underscores."
-                  : "Paste the 43-character token from the guest pass."}
-              </p>
-            </div>
-          ) : (
-            <p role="status" className="text-sm font-medium text-slate-700">
-              QR captured. Confirm to check in this guest.
-            </p>
-          )}
-
-          {error && (
-            <p role="alert" className={`${styles.feedback} ${styles.error}`}>
-              {error}
-            </p>
-          )}
-
-          <button
-            ref={confirmButtonRef}
-            type="submit"
-            className={`${styles.primary} min-h-12 w-full`}
-            disabled={busy || !valid}
-          >
-            {busy ? "Confirming…" : "Confirm check-in"}
+          <button className={styles.primary} disabled={busy || !tokenPattern.test(token.trim())}>
+            {busy ? "Reading pass…" : "View pass"}
           </button>
-
-          <button
-            type="button"
-            className={styles.secondary}
-            disabled={busy}
-            onClick={() => begin("idle")}
-          >
+          <button type="button" className={styles.secondary} disabled={busy} onClick={() => begin("idle")}>
             Cancel
           </button>
         </form>
+      )}
+
+      {balance && (
+        <div className={styles.stack}>
+          <div role="status" className={`${styles.feedback} ${balance.status === "checked_in" ? styles.success : styles.repeat
+            }`}>
+            <strong>
+              {balance.status === "confirmation_replayed" ? "Already confirmed" :
+                balance.status === "already_checked_in" ? "Already checked in" :
+                  balance.status === "checked_in" ? `Admitted ${balance.quantity}` :
+                    balance.remaining === 0 ? "Fully admitted" : "Pass balance"}
+              {" · "}{balance.guestName}
+            </strong>
+            {balance.ticketTier && <p>{balance.ticketTier}</p>}
+            <p>{balance.admitted} of {balance.capacity} admitted · {balance.remaining} remaining</p>
+            {balance.checkedInAt && (
+              <p>{time.format(new Date(balance.checkedInAt))} · Nairobi time · {balance.checkedInBy}</p>
+            )}
+          </div>
+
+          {inspecting && balance.remaining > 0 && (
+            <>
+              {balance.capacity > 1 && (
+                <label className={styles.label}>
+                  People entering now
+                  <input className={styles.input} type="number" min="1" max={balance.remaining}
+                    step="1" value={quantity} disabled={busy || !!attempt}
+                    onChange={(event) => setQuantity(event.target.value)} />
+                </label>
+              )}
+              <button type="button" className={styles.primary}
+                disabled={busy || !canConfirm} onClick={() => void send("admit")}>
+                {busy ? "Confirming…" : attempt ? "Retry same confirmation" :
+                  `Admit ${quantity} ${Number(quantity) === 1 ? "person" : "people"}`}
+              </button>
+            </>
+          )}
+          {inspecting && !attempt && (
+            <button type="button" className={styles.secondary} disabled={busy} onClick={() => begin("idle")}>
+              {balance.remaining === 0 ? "Done" : "Cancel"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {error && <p role="alert" className={`${styles.feedback} ${styles.error}`}>{error}</p>}
+
+      {mode === "idle" && (
+        <div className={styles.stack}>
+          <button type="button" className={styles.primary} onClick={() => begin("camera")}>
+            {balance ? "Scan next guest" : "Scan guest QR"}
+          </button>
+          <button type="button" className={styles.secondary} onClick={() => begin("manual")}>
+            Enter pass manually
+          </button>
+        </div>
       )}
     </section>
   );

@@ -54,10 +54,10 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
         id: tier.id,
         name: tier.name,
         price: money(tier.priceMinor, tier.currency),
-        available: tier.peoplePerTicket === 1,
+        available: true,
         detail: tier.peoplePerTicket === 1
             ? "Admits 1 person. Reserve for up to 15 minutes."
-            : `Admits up to ${tier.peoplePerTicket} people. Group sales opening soon.`,
+            : `Admits up to ${tier.peoplePerTicket} people. Your group can arrive separately.`,
     }));
 
     if (freeStatus === "available") {

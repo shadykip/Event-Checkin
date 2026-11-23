@@ -46,7 +46,13 @@ export class TicketCheckoutRepository {
           { OR: [{ salesEndAt: null }, { salesEndAt: { gt: now } }] },
         ],
       },
-      select: { id: true, name: true, peoplePerTicket: true, priceMinor: true, currency: true },
+      select: {
+        id: true,
+        name: true,
+        peoplePerTicket: true,
+        priceMinor: true,
+        currency: true,
+      },
       orderBy: [{ priceMinor: 'asc' }, { id: 'asc' }],
     });
   }
@@ -109,10 +115,6 @@ export class TicketCheckoutRepository {
         const tier = await tx.ticketTier.findUniqueOrThrow({
           where: { id: input.tierId },
         });
-
-        if (tier.peoplePerTicket > 1) {
-          throw new ConflictException('Group ticket sales are not open yet.');
-        }
 
         if (
           tier.archived ||
