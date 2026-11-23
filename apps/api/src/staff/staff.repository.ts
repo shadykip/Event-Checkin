@@ -649,25 +649,116 @@ export class StaffRepository {
   }
 
   // Ticket tiers
-
   listTicketTiers(tx: DbClient, eventId: string) {
-    return tx.ticketTier.findMany({
-      where: { eventId },
-      select: {
-        id: true,
-        name: true,
-        priceMinor: true,
-        peoplePerTicket: true,
-        currency: true,
-        capacity: true,
-        salesStartAt: true,
-        salesEndAt: true,
-        archived: true,
-        version: true,
-      },
-      orderBy: [{ archived: 'asc' }, { priceMinor: 'asc' }, { name: 'asc' }],
-    });
+    type TierRow = Pick<
+      Prisma.TicketTierGetPayload<object>,
+      | 'id'
+      | 'name'
+      | 'priceMinor'
+      | 'peoplePerTicket'
+      | 'currency'
+      | 'capacity'
+      | 'salesStartAt'
+      | 'salesEndAt'
+      | 'archived'
+      | 'version'
+    > & {
+      sold: number;
+      reserved: number;
+      available: number;
+      grossMinor: string;
+      admitted: number;
+      admissionsRemaining: number;
+    };
+
+    return tx.$queryRaw<TierRow[]>`
+      SELECT
+        t.id,
+        t.name,
+        t.price_minor AS "priceMinor",
+        t.people_per_ticket AS "peoplePerTicket",
+        t.currency,
+        t.capacity,
+        t.sales_start_at AS "salesStartAt",
+        t.sales_end_at AS "salesEndAt",
+        t.archived,
+        t.version,
+        stats.sold::integer AS sold,
+        stats.reserved::integer AS reserved,
+        CASE
+          WHEN t.archived
+            OR t.price_minor <= 0
+            OR e.starts_at <= statement_timestamp()
+            OR t.sales_start_at > statement_timestamp()
+            OR t.sales_end_at <= statement_timestamp()
+          THEN 0
+          ELSE GREATEST(0, t.capacity - stats.sold - stats.reserved)
+        END::integer AS available,
+        stats.gross_minor::text AS "grossMinor",
+        stats.admitted::double precision AS admitted,
+        stats.remaining::double precision AS "admissionsRemaining"
+      FROM ticket_tiers t
+      JOIN events e ON e.id = t.event_id
+      CROSS JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE o.paid_at IS NOT NULL) AS sold,
+          COUNT(*) FILTER (WHERE o.paid_at IS NULL) AS reserved,
+          COALESCE(
+            SUM(o.amount_minor) FILTER (WHERE o.paid_at IS NOT NULL), 0
+          ) AS gross_minor,
+          COALESCE(
+            SUM(balance.used) FILTER (WHERE o.paid_at IS NOT NULL), 0
+          ) AS admitted,
+          COALESCE(
+            SUM(GREATEST(0, o.people_per_ticket - balance.used))
+              FILTER (
+                WHERE o.paid_at IS NOT NULL
+                  AND i.id IS NOT NULL
+                  AND i.revoked_at IS NULL
+              ),
+            0
+          ) AS remaining
+        FROM ticket_orders o
+        LEFT JOIN invitations i ON i.id = o.invitation_id
+        LEFT JOIN check_ins c ON c.invitation_id = i.id
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(
+            (
+              SELECT b.admitted_after
+              FROM admission_batches b
+              WHERE b.invitation_id = i.id
+              ORDER BY b.admitted_after DESC
+              LIMIT 1
+            ),
+            CASE WHEN c.invitation_id IS NULL THEN 0 ELSE 1 END
+          ) AS used
+        ) balance
+        WHERE o.tier_id = t.id
+          AND (o.paid_at IS NOT NULL OR o.expires_at > statement_timestamp())
+      ) stats
+      WHERE t.event_id = ${eventId}::uuid
+      ORDER BY t.archived, t.price_minor, t.name, t.id
+    `;
   }
+
+  // listTicketTiers(tx: DbClient, eventId: string) {
+  //   return tx.ticketTier.findMany({
+  //     where: { eventId },
+  //     select: {
+  //       id: true,
+  //       name: true,
+  //       priceMinor: true,
+  //       peoplePerTicket: true,
+  //       currency: true,
+  //       capacity: true,
+  //       salesStartAt: true,
+  //       salesEndAt: true,
+  //       archived: true,
+  //       version: true,
+  //     },
+  //     orderBy: [{ archived: 'asc' }, { priceMinor: 'asc' }, { name: 'asc' }],
+  //   });
+  // }
 
   createTicketTier(
     tx: DbClient,

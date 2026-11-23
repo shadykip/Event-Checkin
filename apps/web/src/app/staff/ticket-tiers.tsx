@@ -14,6 +14,12 @@ type Tier = {
     salesEndAt: string | null;
     archived: boolean;
     version: number;
+    sold: number;
+    reserved: number;
+    available: number;
+    grossMinor: string;
+    admitted: number;
+    admissionsRemaining: number;
 };
 
 const money = new Intl.NumberFormat("en-KE", {
@@ -123,6 +129,35 @@ export default function TicketTiers({ slug }: { slug: string }) {
         setReload((current) => current + 1);
     }
 
+    const totals = tiers.reduce(
+        (sum, tier) => {
+            sum.sold += tier.sold;
+            sum.reserved += tier.reserved;
+            sum.available += tier.available;
+            sum.grossMinor += Number(tier.grossMinor);
+            sum.admitted += tier.admitted;
+            sum.admissionsRemaining += tier.admissionsRemaining;
+            return sum;
+        },
+        {
+            sold: 0,
+            reserved: 0,
+            available: 0,
+            grossMinor: 0,
+            admitted: 0,
+            admissionsRemaining: 0,
+        },
+    );
+
+    const summaryMetrics = [
+        ["Tickets sold", totals.sold.toLocaleString("en-KE")],
+        ["Gross sales", money.format(totals.grossMinor / 100)],
+        ["Available to buy", totals.available.toLocaleString("en-KE")],
+        ["Active reservations", totals.reserved.toLocaleString("en-KE")],
+        ["People admitted", totals.admitted.toLocaleString("en-KE")],
+        ["Admissions remaining on passes", totals.admissionsRemaining.toLocaleString("en-KE")],
+    ] as const;
+
     return (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <header className="flex flex-wrap items-center justify-between gap-3">
@@ -135,6 +170,16 @@ export default function TicketTiers({ slug }: { slug: string }) {
                 >
                     Add ticket tier
                 </button>
+                {ready && (
+                    <button
+                        type="button"
+                        className={styles.textButton}
+                        onClick={refresh}
+                        disabled={busy || editing !== null}
+                    >
+                        Refresh ticket statistics
+                    </button>
+                )}
             </header>
 
             {!ready && !error && <p role="status" className="mt-4">Loading ticket tiers…</p>}
@@ -145,28 +190,95 @@ export default function TicketTiers({ slug }: { slug: string }) {
                 </p>
             )}
 
-            {tiers.length > 0 && (
-                <ul className="mt-4 divide-y divide-slate-200">
-                    {tiers.map((item) => (
-                        <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                            <div>
-                                <p className="font-semibold">{item.name}</p>
-                                <p className="text-sm text-slate-600">
-                                    {money.format(item.priceMinor / 100)} · {item.capacity} tickets · {item.peoplePerTicket} {item.peoplePerTicket === 1 ? "person" : "people"} per ticket
-                                    {item.archived ? " · Archived" : ""}
-                                </p>
-                            </div>
+            {ready && tiers.length > 0 && (
+                <section
+                    aria-labelledby={`ticket-sales-summary-${slug}`}
+                    className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
+                >
+                    <h4
+                        id={`ticket-sales-summary-${slug}`}
+                        className="text-lg font-semibold tracking-tight text-slate-950"
+                    >
+                        Paid ticket overview
+                    </h4>
 
-                            <button
-                                type="button"
-                                className={styles.secondary}
-                                disabled={busy || editing !== null || !ready}
-                                onClick={() => open(item)}
+                    <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+                        {summaryMetrics.map(([label, value]) => (
+                            <div
+                                key={label}
+                                className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4"
                             >
-                                Edit<span className="sr-only"> {item.name}</span>
-                            </button>
-                        </li>
-                    ))}
+                                <dt className="text-sm leading-5 text-slate-600">
+                                    {label}
+                                </dt>
+                                <dd className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950 tabular-nums sm:text-2xl">
+                                    {value}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                </section>
+            )}
+
+            {ready && tiers.length > 0 && (
+                <ul className="mt-5 grid gap-4">
+                    {tiers.map((item) => {
+                        const metrics = [
+                            ["Tickets sold", item.sold.toLocaleString("en-KE")],
+                            ["Active reservations", item.reserved.toLocaleString("en-KE")],
+                            ["Available to buy", item.available.toLocaleString("en-KE")],
+                            ["Gross sales", money.format(Number(item.grossMinor) / 100)],
+                            ["People admitted", item.admitted.toLocaleString("en-KE")],
+                            [
+                                "Admissions remaining on passes",
+                                item.admissionsRemaining.toLocaleString("en-KE"),
+                            ],
+                        ] as const;
+
+                        return (
+                            <li
+                                key={item.id}
+                                className="min-w-0 rounded-xl border border-slate-200 p-4 sm:p-5"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <h4 className="break-words font-semibold text-slate-950">
+                                            {item.name}
+                                        </h4>
+                                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                                            {money.format(item.priceMinor / 100)}
+                                            {" · "}{item.capacity.toLocaleString("en-KE")} tickets
+                                            {" · "}{item.peoplePerTicket}{" "}
+                                            {item.peoplePerTicket === 1 ? "person" : "people"} per ticket
+                                            {item.archived && " · Archived"}
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        className={styles.secondary}
+                                        disabled={busy || editing !== null}
+                                        onClick={() => open(item)}
+                                    >
+                                        Edit<span className="sr-only"> {item.name}</span>
+                                    </button>
+                                </div>
+
+                                <dl className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3">
+                                    {metrics.map(([label, value]) => (
+                                        <div key={label} className="rounded-lg bg-slate-50 px-3 py-3">
+                                            <dt className="text-xs font-medium leading-5 text-slate-600">
+                                                {label}
+                                            </dt>
+                                            <dd className="mt-1 break-words text-lg font-semibold tabular-nums text-slate-950">
+                                                {value}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </li>
+                        );
+                    })}
                 </ul>
             )}
 
