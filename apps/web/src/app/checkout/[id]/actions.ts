@@ -3,6 +3,7 @@
 type OrderStatus = {
   state: "reserved" | "expired" | "review" | "paid" | "pass_changed";
   tierName: string;
+  peoplePerTicket: number;
   amountMinor: number;
   currency: string;
   expiresAt: string;

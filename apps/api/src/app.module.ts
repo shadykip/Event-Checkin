@@ -17,6 +17,8 @@ import { TicketPaymentController } from './events/ticket-payment.controller';
 import { PaystackService } from './events/paystack.service';
 import { TicketPaymentService } from './events/ticket-payment.service';
 import 'dotenv/config';
+import { TicketRecoveryRepository } from './events/ticket-recovery.repository';
+import { TicketRecoveryWorker } from './events/ticket-recovery.worker';
 
 @Module({
   controllers: [
@@ -39,6 +41,8 @@ import 'dotenv/config';
     TicketCheckoutRepository,
     PaystackService,
     TicketPaymentService,
+    TicketRecoveryRepository,
+    TicketRecoveryWorker,
   ],
 })
 export class AppModule {}

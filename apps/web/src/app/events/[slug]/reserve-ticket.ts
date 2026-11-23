@@ -3,6 +3,7 @@
 type Receipt = {
   id: string;
   tierName: string;
+  peoplePerTicket: number;
   amountMinor: number;
   currency: string;
   expiresAt: string;

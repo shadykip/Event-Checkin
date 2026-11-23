@@ -71,7 +71,8 @@ export default function Checkout() {
                 {order?.state === "paid" ? "Payment received" : "Ticket checkout"}
             </h1>
 
-            {order && <p className="font-medium text-slate-800">{order.tierName} · {price}</p>}
+            {order && <p className="font-medium text-slate-800">{order.tierName} · {price} · {order.peoplePerTicket === 1
+                ? "Admits 1 person" : `Admits up to ${order.peoplePerTicket} people`}</p>}
             {!order && !error && <p role="status">Checking order status…</p>}
 
             {order?.state === "reserved" && (

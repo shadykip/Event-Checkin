@@ -581,6 +581,7 @@ export class StaffRepository {
         id: true,
         name: true,
         priceMinor: true,
+        peoplePerTicket: true,
         currency: true,
         capacity: true,
         salesStartAt: true,
