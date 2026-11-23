@@ -23,10 +23,22 @@ export class InvitationsService {
       this.hashPassToken(token),
     );
 
-    if (!invitation) throw new NotFoundException('Invitation unavailable');
-    return invitation;
-  }
+    if (!invitation) {
+      throw new NotFoundException('Invitation unavailable');
+    }
 
+    const { ticketOrder, isPublicTicket, ...pass } = invitation;
+
+    return {
+      ...pass,
+      ticket: {
+        name:
+          ticketOrder?.tierName ??
+          (isPublicTicket ? 'Free admission' : 'Guest invitation'),
+        peoplePerTicket: ticketOrder?.peoplePerTicket ?? 1,
+      },
+    };
+  }
   async respond(token: unknown, status: unknown) {
     const tokenHash = this.hashPassToken(token);
 

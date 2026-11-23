@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { presentPublicTier, publicTicketSelect } from './public-ticket-options';
 import {
   committedTickets,
   inventoryTime,
@@ -36,25 +37,26 @@ export class TicketCheckoutRepository {
 
   async list(slug: string) {
     const now = new Date();
-    return this.db.ticketTier.findMany({
-      where: {
-        event: { slug, startsAt: { gt: now } },
-        archived: false,
-        priceMinor: { gt: 0 },
-        AND: [
-          { OR: [{ salesStartAt: null }, { salesStartAt: { lte: now } }] },
-          { OR: [{ salesEndAt: null }, { salesEndAt: { gt: now } }] },
-        ],
-      },
+    const event = await this.db.event.findUnique({
+      where: { slug },
       select: {
-        id: true,
-        name: true,
-        peoplePerTicket: true,
-        priceMinor: true,
-        currency: true,
+        startsAt: true,
+        ticketTiers: {
+          where: { archived: false, priceMinor: { gt: 0 } },
+          select: publicTicketSelect(now),
+          orderBy: [{ priceMinor: 'asc' }, { id: 'asc' }],
+        },
       },
-      orderBy: [{ priceMinor: 'asc' }, { id: 'asc' }],
     });
+
+    // Keep the existing endpoint limited to tiers whose sales window is open.
+    return event
+      ? event.ticketTiers
+          .map((tier) => presentPublicTier(tier, event.startsAt, now))
+          .filter(
+            (tier) => tier.status === 'available' || tier.status === 'sold_out',
+          )
+      : [];
   }
 
   reserve(input: Reservation) {

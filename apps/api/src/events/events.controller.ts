@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Header, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Post,
+  StreamableFile,
+} from '@nestjs/common';
 import { EventsService } from './events.service';
 
 @Controller('events')
@@ -15,6 +23,14 @@ export class EventsController {
   @Header('Cache-Control', 'no-store')
   findBySlug(@Param('slug') slug: string) {
     return this.events.findBySlug(slug);
+  }
+
+  @Get(':slug/banner')
+  @Header('Cache-Control', 'no-store')
+  async banner(@Param('slug') slug: string) {
+    return new StreamableFile(await this.events.banner(slug), {
+      type: 'image/webp',
+    });
   }
 
   @Post(':slug/tickets')

@@ -21,7 +21,7 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
     const [error, setError] = useState("");
     const [issued, setIssued] = useState<IssuedInvitation | null>(null);
     const [copyStatus, setCopyStatus] = useState("");
-    const [emailState, setEmailState] = useState<"idle" | "sending" | "sent">("idle");
+
     const linkInput = useRef<HTMLInputElement>(null);
 
     function close() {
@@ -29,7 +29,7 @@ export default function InviteGuestForm({ slug, onIssued }: Props) {
         setIssued(null);
         setError("");
         setCopyStatus("");
-        setEmailState("idle");
+
     }
 
     async function submit(event: FormEvent<HTMLFormElement>) {

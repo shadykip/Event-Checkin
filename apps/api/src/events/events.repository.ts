@@ -1,40 +1,58 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { presentPublicTier, publicTicketSelect } from './public-ticket-options';
 
-const publicFields = {
-  id: true,
-  name: true,
-  slug: true,
-  venue: true,
-  startsAt: true,
-  ticketAllocation: { select: { capacity: true } },
-  _count: {
-    select: {
-      invitations: {
-        where: { isPublicTicket: true, revokedAt: null },
+const publicFields = (now: Date) =>
+  ({
+    id: true,
+    name: true,
+    slug: true,
+    venue: true,
+    startsAt: true,
+    banner: { select: { eventId: true } },
+    ticketTiers: {
+      where: { archived: false, priceMinor: { gt: 0 } },
+      select: publicTicketSelect(now),
+      orderBy: [{ priceMinor: 'asc' }, { id: 'asc' }],
+    },
+    ticketAllocation: { select: { capacity: true } },
+    _count: {
+      select: {
+        invitations: {
+          where: { isPublicTicket: true, revokedAt: null },
+        },
       },
     },
-  },
-} as const;
+  }) satisfies Prisma.EventSelect;
 
 type AvailabilityRow = {
   startsAt: Date;
   ticketAllocation: { capacity: number } | null;
   _count: { invitations: number };
+  banner: { eventId: string } | null;
+  ticketTiers: Parameters<typeof presentPublicTier>[0][];
 };
 
-function presentEvent<T extends AvailabilityRow>(row: T) {
-  const { ticketAllocation, _count, ...event } = row;
+function presentEvent<T extends AvailabilityRow>(row: T, now: Date) {
+  const { ticketAllocation, _count, banner, ticketTiers, ...event } = row;
   const capacity = ticketAllocation?.capacity ?? 0;
   const remaining = Math.max(0, capacity - _count.invitations);
 
   let ticketStatus: 'closed' | 'available' | 'sold_out' = 'closed';
 
-  if (capacity > 0 && row.startsAt.getTime() > Date.now()) {
+  if (capacity > 0 && row.startsAt > now) {
     ticketStatus = remaining > 0 ? 'available' : 'sold_out';
   }
 
-  return { ...event, ticketStatus };
+  return {
+    ...event,
+    hasBanner: banner !== null,
+    ticketStatus,
+    ticketTiers: ticketTiers.map((tier) =>
+      presentPublicTier(tier, row.startsAt, now),
+    ),
+  };
 }
 
 @Injectable()
@@ -42,25 +60,34 @@ export class EventsRepository {
   constructor(private readonly db: PrismaService) {}
 
   async list() {
+    const now = new Date();
     const events = await this.db.event.findMany({
-      select: publicFields,
+      select: publicFields(now),
       orderBy: [{ startsAt: 'asc' }, { slug: 'asc' }],
     });
 
-    return events.map((event) => presentEvent(event));
+    return events.map((event) => presentEvent(event, now));
   }
 
   async findBySlug(slug: string) {
+    const now = new Date();
     const event = await this.db.event.findUnique({
       where: { slug },
       select: {
-        ...publicFields,
+        ...publicFields(now),
         description: true,
         descriptionHtml: true,
       },
     });
 
-    return event ? presentEvent(event) : null;
+    return event ? presentEvent(event, now) : null;
+  }
+
+  findBanner(slug: string) {
+    return this.db.eventBanner.findFirst({
+      where: { event: { slug } },
+      select: { image: true },
+    });
   }
 
   claim(

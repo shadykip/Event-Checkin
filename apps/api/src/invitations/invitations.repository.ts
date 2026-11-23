@@ -19,6 +19,13 @@ export class InvitationsRepository {
         guestName: true,
         rsvpStatus: true,
         rsvpRespondedAt: true,
+        isPublicTicket: true,
+        ticketOrder: {
+          select: {
+            tierName: true,
+            peoplePerTicket: true,
+          },
+        },
         event: {
           select: {
             id: true,
