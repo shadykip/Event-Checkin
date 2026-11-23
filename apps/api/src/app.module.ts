@@ -11,6 +11,12 @@ import { InvitationsRepository } from './invitations/invitations.repository';
 import { InvitationsService } from './invitations/invitations.service';
 import { EventsRepository } from './events/events.repository';
 import { EventsService } from './events/events.service';
+import { TicketCheckoutController } from './events/ticket-checkout.controller';
+import { TicketCheckoutRepository } from './events/ticket-checkout.repository';
+import { TicketPaymentController } from './events/ticket-payment.controller';
+import { PaystackService } from './events/paystack.service';
+import { TicketPaymentService } from './events/ticket-payment.service';
+import 'dotenv/config';
 
 @Module({
   controllers: [
@@ -18,6 +24,8 @@ import { EventsService } from './events/events.service';
     EventsController,
     InvitationsController,
     StaffController,
+    TicketCheckoutController,
+    TicketPaymentController,
   ],
   providers: [
     AppService,
@@ -28,6 +36,9 @@ import { EventsService } from './events/events.service';
     InvitationsService,
     EventsRepository,
     EventsService,
+    TicketCheckoutRepository,
+    PaystackService,
+    TicketPaymentService,
   ],
 })
 export class AppModule {}

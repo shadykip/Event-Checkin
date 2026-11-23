@@ -1,6 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { Prisma, type RsvpStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { parseTicketTier } from './ticket-tier-input';
+
+import {
+  committedTickets,
+  inventoryTime,
+  lockTicketTier,
+} from '../events/ticket-inventory';
 
 type DbClient = Prisma.TransactionClient;
 
@@ -382,15 +389,19 @@ export class StaffRepository {
 
   async lockValidInvitation(tx: DbClient, eventId: string, tokenHash: string) {
     const [invitation] = await tx.$queryRaw<
-      { id: string; guestName: string }[]
+      { id: string; guestName: string; ticketTier: string | null }[]
     >`
-      SELECT id, guest_name AS "guestName"
-      FROM invitations
-      WHERE event_id = ${eventId}::uuid
-        AND token_hash = ${tokenHash}
-        AND revoked_at IS NULL
-      FOR UPDATE
-    `;
+    SELECT i.id,
+           i.guest_name AS "guestName",
+           o.tier_name AS "ticketTier"
+    FROM invitations i
+    LEFT JOIN ticket_orders o ON o.invitation_id = i.id
+    WHERE i.event_id = ${eventId}::uuid
+      AND i.token_hash = ${tokenHash}
+      AND i.revoked_at IS NULL
+    FOR UPDATE OF i
+  `;
+
     return invitation;
   }
 
@@ -558,6 +569,62 @@ export class StaffRepository {
   deleteSession(tokenHash: string) {
     return this.db.staffSession.deleteMany({
       where: { tokenHash },
+    });
+  }
+
+  // Ticket tiers
+
+  listTicketTiers(tx: DbClient, eventId: string) {
+    return tx.ticketTier.findMany({
+      where: { eventId },
+      select: {
+        id: true,
+        name: true,
+        priceMinor: true,
+        currency: true,
+        capacity: true,
+        salesStartAt: true,
+        salesEndAt: true,
+        archived: true,
+        version: true,
+      },
+      orderBy: [{ archived: 'asc' }, { priceMinor: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  createTicketTier(
+    tx: DbClient,
+    eventId: string,
+    data: ReturnType<typeof parseTicketTier>,
+  ) {
+    return tx.ticketTier.create({
+      data: { eventId, ...data },
+      select: { id: true },
+    });
+  }
+
+  async updateTicketTier(
+    tx: DbClient,
+    eventId: string,
+    id: string,
+    version: number,
+    data: ReturnType<typeof parseTicketTier>,
+  ) {
+    const found = await lockTicketTier(tx, eventId, id);
+    if (!found) return { count: 0 };
+
+    const now = await inventoryTime(tx);
+    const committed = await committedTickets(tx, id, now);
+
+    if (data.capacity < committed) {
+      throw new ConflictException(
+        `Capacity must cover the ${committed} paid or currently reserved tickets.`,
+      );
+    }
+
+    return tx.ticketTier.updateMany({
+      where: { id, eventId, version },
+      data: { ...data, version: { increment: 1 } },
     });
   }
 }

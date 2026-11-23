@@ -19,6 +19,7 @@ import type { Request, Response } from 'express';
 import { StaffService } from './staff.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { maxEventBannerBytes } from './event-banner';
+import type { TicketTierInput } from './ticket-tier-input';
 
 const cookieName = 'staff_session';
 
@@ -313,6 +314,42 @@ export class StaffController {
       request.cookies?.[cookieName],
       slug,
       capacity,
+    );
+  }
+
+  @Get('events/:slug/ticket-tiers')
+  @Header('Cache-Control', 'no-store')
+  listTicketTiers(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.listTicketTiers(request.cookies?.[cookieName], slug);
+  }
+
+  @Post('events/:slug/ticket-tiers')
+  @Header('Cache-Control', 'no-store')
+  createTicketTier(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body() input: TicketTierInput,
+  ) {
+    return this.staff.saveTicketTier(
+      request.cookies?.[cookieName],
+      slug,
+      input,
+    );
+  }
+
+  @Put('events/:slug/ticket-tiers/:tierId')
+  @Header('Cache-Control', 'no-store')
+  updateTicketTier(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('tierId', ParseUUIDPipe) tierId: string,
+    @Body() input: TicketTierInput,
+  ) {
+    return this.staff.saveTicketTier(
+      request.cookies?.[cookieName],
+      slug,
+      input,
+      tierId,
     );
   }
 

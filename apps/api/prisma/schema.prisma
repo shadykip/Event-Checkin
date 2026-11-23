@@ -3,16 +3,16 @@ datasource db {
 }
 
 model Event {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  venue     String
-  startsAt  DateTime @map("starts_at") @db.Timestamptz(3)
-  description String?
-  descriptionHtml String? @map("description_html")
-  banner      EventBanner?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String       @unique
+  venue           String
+  startsAt        DateTime     @map("starts_at") @db.Timestamptz(3)
+  description     String?
+  descriptionHtml String?      @map("description_html")
+  banner          EventBanner?
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   invitations         Invitation[]
   staffAssignments    EventStaffAssignment[]
@@ -20,8 +20,57 @@ model Event {
   checkInInvitationId String?                @db.Uuid
 
   ticketAllocation TicketAllocation?
+  ticketTiers      TicketTier[]
 
   @@map("events")
+}
+
+model TicketTier {
+  id           String        @id @default(uuid()) @db.Uuid
+  eventId      String        @map("event_id") @db.Uuid
+  name         String
+  nameKey      String        @map("name_key")
+  priceMinor   Int           @map("price_minor")
+  currency     String        @default("KES") @db.Char(3)
+  capacity     Int
+  salesStartAt DateTime?     @map("sales_start_at") @db.Timestamptz(3)
+  salesEndAt   DateTime?     @map("sales_end_at") @db.Timestamptz(3)
+  archived     Boolean       @default(false)
+  version      Int           @default(1)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  orders       TicketOrder[]
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@unique([eventId, nameKey])
+  @@index([eventId, archived])
+  @@map("ticket_tiers")
+}
+
+model TicketOrder {
+  id          String    @id @default(uuid()) @db.Uuid
+  tierId      String    @map("tier_id") @db.Uuid
+  checkoutKey String    @map("checkout_key") @db.Uuid
+  guestName   String    @map("guest_name")
+  guestEmail  String    @map("guest_email")
+  tierName    String    @map("tier_name")
+  amountMinor Int       @map("amount_minor")
+  currency    String    @db.Char(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  paidAt      DateTime? @map("paid_at") @db.Timestamptz(3)
+  checkoutUrl   String?     @map("checkout_url")
+  paymentReview String?     @map("payment_review")
+  emailSentAt   DateTime?   @map("email_sent_at") @db.Timestamptz(3)
+  invitationId  String?     @unique @map("invitation_id") @db.Uuid
+  invitation    Invitation? @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+
+  tier TicketTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+
+  @@unique([tierId, checkoutKey])
+  @@index([tierId, paidAt, expiresAt])
+  @@map("ticket_orders")
 }
 
 model TicketAllocation {
@@ -60,23 +109,24 @@ model Invitation {
 
   rsvpStatus      RsvpStatus @default(PENDING) @map("rsvp_status")
   rsvpRespondedAt DateTime?  @map("rsvp_responded_at") @db.Timestamptz(3)
-  isPublicTicket Boolean @default(false) @map("is_public_ticket")
+  isPublicTicket  Boolean    @default(false) @map("is_public_ticket")
+  ticketOrder TicketOrder?
 
   @@unique([eventId, guestEmail])
   @@map("invitations")
 }
 
 model StaffAccount {
-  id           String                 @id @default(uuid()) @db.Uuid
-  name         String
-  email        String                 @unique
-  passwordHash String                 @map("password_hash")
-  isActive     Boolean                @default(true) @map("is_active")
-  canCreateEvents Boolean @default(false) @map("can_create_events")
-  createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  assignments  EventStaffAssignment[]
-  sessions     StaffSession[]
-  checkIns     CheckIn[]
+  id              String                 @id @default(uuid()) @db.Uuid
+  name            String
+  email           String                 @unique
+  passwordHash    String                 @map("password_hash")
+  isActive        Boolean                @default(true) @map("is_active")
+  canCreateEvents Boolean                @default(false) @map("can_create_events")
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  assignments     EventStaffAssignment[]
+  sessions        StaffSession[]
+  checkIns        CheckIn[]
 
   resetTokenHash   String?   @unique @map("reset_token_hash") @db.Char(64)
   resetExpiresAt   DateTime? @map("reset_expires_at") @db.Timestamptz(3)

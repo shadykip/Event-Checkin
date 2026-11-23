@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import FreeTicketForm from "./free-ticket-form";
-
+import TicketChoiceForm, { type PublicTier } from "./ticket-choice-form";
 type EventPageProps = {
   params: Promise<{ slug: string }>;
 };
@@ -59,6 +58,13 @@ async function EventDetail({ params }: EventPageProps) {
 
   const event: EventDetails = await response.json();
 
+  const tiersResponse = await fetch(
+    new URL(`/events/${encodeURIComponent(slug)}/ticket-tiers`, baseUrl),
+    { cache: "no-store" },
+  );
+  if (!tiersResponse.ok) throw new Error("Could not load ticket options.");
+  const tiers: PublicTier[] = await tiersResponse.json();
+
   return (
     <article className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <header className="bg-slate-950 px-6 py-9 text-white sm:px-10 sm:py-12">
@@ -85,19 +91,14 @@ async function EventDetail({ params }: EventPageProps) {
             </p>
           )}
         </section>
-
-        {event.ticketStatus === "available" ? (
-          <FreeTicketForm slug={slug} />
-        ) : (
-          <aside className="rounded-2xl bg-slate-100 p-6">
-            <h2 className="text-xl font-semibold">
-              {event.ticketStatus === "sold_out" ? "Tickets sold out" : "Public registration closed"}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              Already have an invitation? Open your private link to view your QR pass.
-            </p>
-          </aside>
-        )}
+        <div className="grid gap-4">
+          <TicketChoiceForm
+            key={slug}
+            slug={slug}
+            freeStatus={event.ticketStatus}
+            tiers={tiers}
+          />
+        </div>
       </div>
     </article>
   );
