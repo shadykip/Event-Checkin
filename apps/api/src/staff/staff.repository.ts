@@ -74,18 +74,31 @@ export class StaffRepository {
     const [totals] = await tx.$queryRaw<
       { checkedIn: number; expected: number }[]
     >`
-    SELECT
-      count(c.invitation_id)::integer AS "checkedIn",
-      (count(*) FILTER (
-        WHERE c.invitation_id IS NULL AND i.revoked_at IS NULL
-      ))::integer AS "expected"
-    FROM invitations i
-    LEFT JOIN check_ins c ON c.invitation_id = i.id
-    WHERE i.event_id = ${eventId}::uuid
+    WITH balances AS (
+      SELECT i.revoked_at,
+             COALESCE(o.people_per_ticket, 1) AS capacity,
+             COALESCE(
+               (
+                 SELECT MAX(b.admitted_after)
+                 FROM admission_batches b
+                 WHERE b.invitation_id = i.id
+               ),
+               CASE WHEN c.invitation_id IS NULL THEN 0 ELSE 1 END
+             ) AS admitted
+      FROM invitations i
+      LEFT JOIN check_ins c ON c.invitation_id = i.id
+      LEFT JOIN ticket_orders o ON o.invitation_id = i.id
+      WHERE i.event_id = ${eventId}::uuid
+    )
+    SELECT COALESCE(SUM(admitted), 0)::float8 AS "checkedIn",
+           COALESCE(SUM(capacity - admitted)
+             FILTER (WHERE revoked_at IS NULL), 0)::float8 AS "expected"
+    FROM balances
   `;
 
     return totals;
   }
+
   async findActiveSession(tx: DbClient, tokenHash: string) {
     const [staff] = await tx.$queryRaw<
       { id: string; canCreateEvents: boolean }[]
@@ -389,11 +402,17 @@ export class StaffRepository {
 
   async lockValidInvitation(tx: DbClient, eventId: string, tokenHash: string) {
     const [invitation] = await tx.$queryRaw<
-      { id: string; guestName: string; ticketTier: string | null }[]
+      {
+        id: string;
+        guestName: string;
+        ticketTier: string | null;
+        capacity: number;
+      }[]
     >`
     SELECT i.id,
            i.guest_name AS "guestName",
-           o.tier_name AS "ticketTier"
+           o.tier_name AS "ticketTier",
+           COALESCE(o.people_per_ticket, 1) AS capacity
     FROM invitations i
     LEFT JOIN ticket_orders o ON o.invitation_id = i.id
     WHERE i.event_id = ${eventId}::uuid
@@ -558,6 +577,63 @@ export class StaffRepository {
     });
   }
 
+  async admissionBalance(tx: DbClient, invitationId: string) {
+    const latest = await tx.admissionBatch.findFirst({
+      where: { invitationId },
+      orderBy: { admittedAfter: 'desc' },
+      select: {
+        admittedAfter: true,
+        checkedInAt: true,
+        staff: { select: { name: true } },
+      },
+    });
+
+    if (latest) {
+      return {
+        admitted: latest.admittedAfter,
+        checkedInAt: latest.checkedInAt,
+        checkedInBy: latest.staff.name,
+      };
+    }
+
+    const first = await tx.checkIn.findUnique({
+      where: { invitationId },
+      select: { checkedInAt: true, staff: { select: { name: true } } },
+    });
+
+    return {
+      admitted: first ? 1 : 0,
+      checkedInAt: first?.checkedInAt ?? null,
+      checkedInBy: first?.staff.name ?? null,
+    };
+  }
+
+  findAdmissionBatch(tx: DbClient, invitationId: string, requestId: string) {
+    return tx.admissionBatch.findUnique({
+      where: { invitationId_requestId: { invitationId, requestId } },
+      include: { staff: { select: { name: true } } },
+    });
+  }
+
+  async addAdmissionBatch(
+    tx: DbClient,
+    invitationId: string,
+    staffId: string,
+    requestId: string,
+    quantity: number,
+    admittedAfter: number,
+  ) {
+    await tx.checkIn.createMany({
+      data: [{ invitationId, staffId }],
+      skipDuplicates: true,
+    });
+
+    return tx.admissionBatch.create({
+      data: { invitationId, staffId, requestId, quantity, admittedAfter },
+      include: { staff: { select: { name: true } } },
+    });
+  }
+
   saveTicketAllocation(tx: DbClient, eventId: string, capacity: number) {
     return tx.ticketAllocation.upsert({
       where: { eventId },
@@ -581,6 +657,7 @@ export class StaffRepository {
         id: true,
         name: true,
         priceMinor: true,
+        peoplePerTicket: true,
         currency: true,
         capacity: true,
         salesStartAt: true,

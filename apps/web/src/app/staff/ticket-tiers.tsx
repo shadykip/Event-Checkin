@@ -9,6 +9,7 @@ type Tier = {
     priceMinor: number;
     currency: string;
     capacity: number;
+    peoplePerTicket: number;
     salesStartAt: string | null;
     salesEndAt: string | null;
     archived: boolean;
@@ -88,6 +89,7 @@ export default function TicketTiers({ slug }: { slug: string }) {
                     name: form.get("name"),
                     priceKes: form.get("priceKes"),
                     capacity: Number(form.get("capacity")),
+                    peoplePerTicket: Number(form.get("peoplePerTicket")),
                     salesStartAt: form.get("salesStartAt"),
                     salesEndAt: form.get("salesEndAt"),
                     archived: form.get("archived") === "on",
@@ -150,7 +152,7 @@ export default function TicketTiers({ slug }: { slug: string }) {
                             <div>
                                 <p className="font-semibold">{item.name}</p>
                                 <p className="text-sm text-slate-600">
-                                    {money.format(item.priceMinor / 100)} · {item.capacity} tickets
+                                    {money.format(item.priceMinor / 100)} · {item.capacity} tickets · {item.peoplePerTicket} {item.peoplePerTicket === 1 ? "person" : "people"} per ticket
                                     {item.archived ? " · Archived" : ""}
                                 </p>
                             </div>
@@ -182,10 +184,24 @@ export default function TicketTiers({ slug }: { slug: string }) {
 
                     <div className="grid gap-4 sm:grid-cols-2">
                         <label className={styles.label}>
-                            Price per guest (KES)
+                            Price per ticket (KES)
                             <input className={styles.input} name="priceKes" inputMode="decimal"
                                 defaultValue={tier ? (tier.priceMinor / 100).toFixed(2) : ""}
                                 placeholder="500.00" required />
+                        </label>
+
+                        <label className={styles.label}>
+                            People per ticket
+                            <input
+                                className={styles.input}
+                                name="peoplePerTicket"
+                                type="number"
+                                min="1"
+                                max="2147483647"
+                                step="1"
+                                defaultValue={tier?.peoplePerTicket ?? 1}
+                                required
+                            />
                         </label>
 
                         <label className={styles.label}>

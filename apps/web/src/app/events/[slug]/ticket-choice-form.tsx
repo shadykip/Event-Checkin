@@ -8,6 +8,7 @@ export type PublicTier = {
     id: string;
     name: string;
     priceMinor: number;
+    peoplePerTicket: number;
     currency: string;
 };
 
@@ -53,7 +54,10 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
         id: tier.id,
         name: tier.name,
         price: money(tier.priceMinor, tier.currency),
-        detail: "Reserve for up to 15 minutes. Payment is required for admission.",
+        available: true,
+        detail: tier.peoplePerTicket === 1
+            ? "Admits 1 person. Reserve for up to 15 minutes."
+            : `Admits up to ${tier.peoplePerTicket} people. Your group can arrive separately.`,
     }));
 
     if (freeStatus === "available") {
@@ -61,13 +65,15 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
             id: "free",
             name: "Free admission",
             price: "Free",
+            available: true,
             detail: "Claim a ticket to receive your QR pass immediately.",
         });
     }
 
     // Multiple options require an explicit choice, including after availability changes.
-    const selected = options.find((option) => option.id === choice)
-        ?? (!choice && options.length === 1 ? options[0] : undefined);
+    const available = options.filter((option) => option.available);
+    const selected = available.find((option) => option.id === choice)
+        ?? (!choice && available.length === 1 ? available[0] : undefined);
 
     async function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -184,6 +190,7 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
                                     type="radio"
                                     name="ticket"
                                     value={option.id}
+                                    disabled={!option.available}
                                     checked={selected?.id === option.id}
                                     onChange={() => {
                                         setChoice(option.id);
@@ -209,7 +216,7 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
                         <p className="mt-2 text-sm text-slate-600">Free admission is sold out.</p>
                     )}
 
-                    <fieldset disabled={busy} className="mt-5 grid gap-4 border-t border-slate-200 pt-5">
+                    <fieldset disabled={busy || available.length === 0} className="mt-5 grid gap-4 border-t border-slate-200 pt-5">
                         <legend className="sr-only">Guest details</legend>
                         <label className="text-sm font-semibold">
                             Full name

@@ -16,6 +16,7 @@ const HOLD_MS = 15 * 60 * 1000;
 const receipt = {
   id: true,
   tierName: true,
+  peoplePerTicket: true,
   amountMinor: true,
   currency: true,
   expiresAt: true,
@@ -45,7 +46,13 @@ export class TicketCheckoutRepository {
           { OR: [{ salesEndAt: null }, { salesEndAt: { gt: now } }] },
         ],
       },
-      select: { id: true, name: true, priceMinor: true, currency: true },
+      select: {
+        id: true,
+        name: true,
+        peoplePerTicket: true,
+        priceMinor: true,
+        currency: true,
+      },
       orderBy: [{ priceMinor: 'asc' }, { id: 'asc' }],
     });
   }
@@ -98,6 +105,7 @@ export class TicketCheckoutRepository {
           return {
             id: previous.id,
             tierName: previous.tierName,
+            peoplePerTicket: previous.peoplePerTicket,
             amountMinor: previous.amountMinor,
             currency: previous.currency,
             expiresAt: previous.expiresAt,
@@ -140,6 +148,7 @@ export class TicketCheckoutRepository {
             guestName: input.guestName,
             guestEmail: input.guestEmail,
             tierName: tier.name,
+            peoplePerTicket: tier.peoplePerTicket,
             amountMinor: tier.priceMinor,
             currency: tier.currency,
             expiresAt,

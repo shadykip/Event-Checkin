@@ -4,6 +4,7 @@ export type TicketTierInput = {
   name?: unknown;
   priceKes?: unknown;
   capacity?: unknown;
+  peoplePerTicket?: unknown;
   salesStartAt?: unknown;
   salesEndAt?: unknown;
   archived?: unknown;
@@ -67,6 +68,14 @@ export function parseTicketTier(input: TicketTierInput) {
     throw new BadRequestException('Enter a ticket name of 1 to 80 characters.');
   }
 
+  const people = input.peoplePerTicket;
+  if (people !== undefined && (
+    typeof people !== 'number' || !Number.isInteger(people) ||
+    people < 1 || people > 2147483647
+  )) {
+    throw new BadRequestException('People per ticket must be a positive whole number.');
+  }
+
   const capacity = input.capacity;
   if (
     typeof capacity !== 'number' ||
@@ -96,6 +105,7 @@ export function parseTicketTier(input: TicketTierInput) {
     priceMinor: parsePrice(input.priceKes),
     currency: 'KES',
     capacity,
+    ...(typeof people === 'number' ? { peoplePerTicket: people } : {}),
     salesStartAt,
     salesEndAt,
     archived: input.archived === true,

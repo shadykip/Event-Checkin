@@ -68,6 +68,22 @@ export class TicketPaymentService {
     const owner = await this.owned(id, key);
     this.token(id); // Validate fulfillment configuration before opening checkout.
 
+    const startedAt = new Date();
+
+    await this.db.ticketOrder.updateMany({
+      where: {
+        id: owner.id,
+        paymentStartedAt: null,
+        paidAt: null,
+        paymentReview: null,
+        expiresAt: { gt: startedAt },
+      },
+      data: {
+        paymentStartedAt: startedAt,
+        recoveryAfter: new Date(startedAt.getTime() + 60_000),
+      },
+    });
+
     // Serialize initialization per order. The provider call has a bounded timeout.
     return this.db.$transaction(
       async (tx) => {
@@ -97,12 +113,12 @@ export class TicketPaymentService {
 
   async reconcile(id: string) {
     const initial = await this.db.ticketOrder.findUnique({ where: { id } });
-    if (!initial || initial.paymentReview) return;
-    if (initial.invitationId) {
-      await this.deliver(id);
-      return;
-    }
-
+    // if (!initial || initial.paymentReview) return;
+    // if (initial.invitationId) {
+    //   await this.deliver(id);
+    //   return;
+    // }
+    if (!initial || initial.paymentReview || initial.invitationId) return;
     const payment = await this.paystack.verify(id);
     if (payment.status !== 'success') return;
 
@@ -176,14 +192,19 @@ export class TicketPaymentService {
 
       await tx.ticketOrder.update({
         where: { id },
-        data: { paidAt, invitationId: invitation.id },
+        data: {
+          paidAt,
+          invitationId: invitation.id,
+          recoveryAfter: order.recoveryLease ? order.recoveryAfter : now,
+          recoveryAttempts: 0,
+        },
       });
     });
 
-    await this.deliver(id);
+    // await this.deliver(id);
   }
 
-  private async deliver(id: string) {
+  async deliverPendingPass(id: string) {
     const order = await this.db.ticketOrder.findUniqueOrThrow({
       where: { id },
       include: { invitation: { include: { event: true } } },
@@ -216,6 +237,7 @@ export class TicketPaymentService {
 
     const common = {
       tierName: order.tierName,
+      peoplePerTicket: order.peoplePerTicket,
       amountMinor: order.amountMinor,
       currency: order.currency,
       expiresAt: order.expiresAt,

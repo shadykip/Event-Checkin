@@ -565,8 +565,14 @@ export class StaffService {
 
     return guestRosterCsv(guests);
   }
-
-  checkIn(sessionToken: unknown, slug: string, passToken: string) {
+  checkIn(
+    sessionToken: unknown,
+    slug: string,
+    passToken: unknown,
+    action?: unknown,
+    quantity?: unknown,
+    requestId?: unknown,
+  ) {
     return this.repository.transaction(async (tx) => {
       const { staffId, eventId } = await this.requireAssignment(
         tx,
@@ -574,28 +580,119 @@ export class StaffService {
         slug,
       );
 
-      const invitation = await this.repository.lockValidInvitation(
+      if (!isToken(passToken)) {
+        throw new NotFoundException('Pass unavailable for this event');
+      }
+
+      if (action !== undefined && action !== 'preview' && action !== 'admit') {
+        throw new BadRequestException('Unknown check-in action.');
+      }
+
+      const pass = await this.repository.lockValidInvitation(
         tx,
         eventId,
         hashToken(passToken),
       );
+      if (!pass) throw new NotFoundException('Pass unavailable for this event');
 
-      if (!invitation) {
-        throw new NotFoundException('Pass unavailable for this event');
+      const balance = await this.repository.admissionBalance(tx, pass.id);
+      const remaining = pass.capacity - balance.admitted;
+      const summary = {
+        guestName: pass.guestName,
+        ticketTier: pass.ticketTier,
+        capacity: pass.capacity,
+        ...balance,
+        remaining,
+      };
+
+      if (action === 'preview') {
+        return { ...summary, status: 'preview' };
       }
 
-      const admission = await this.repository.recordAdmission(
+      // Keep older single-ticket clients and the existing two-gate test working.
+      if (pass.capacity === 1) {
+        if (quantity !== undefined && quantity !== 1) {
+          throw new BadRequestException('This pass admits one person.');
+        }
+
+        const admission = await this.repository.recordAdmission(
+          tx,
+          pass.id,
+          staffId,
+        );
+        return {
+          ...summary,
+          status: admission.created ? 'checked_in' : 'already_checked_in',
+          admitted: 1,
+          remaining: 0,
+          quantity: admission.created ? 1 : 0,
+          checkedInAt: admission.checkedInAt,
+          checkedInBy: admission.checkedInBy,
+        };
+      }
+
+      if (
+        action !== 'admit' ||
+        typeof quantity !== 'number' ||
+        !Number.isSafeInteger(quantity) ||
+        quantity < 1 ||
+        quantity > pass.capacity ||
+        typeof requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          requestId,
+        )
+      ) {
+        throw new BadRequestException(
+          'Confirm a group size and supply a valid request ID.',
+        );
+      }
+
+      // Check retries before checking the remaining balance. The original
+      // request may itself have used the final places.
+      const prior = await this.repository.findAdmissionBatch(
         tx,
-        invitation.id,
+        pass.id,
+        requestId,
+      );
+      if (prior) {
+        if (prior.quantity !== quantity || prior.staffId !== staffId) {
+          throw new ConflictException(
+            'This request ID was already used for another admission.',
+          );
+        }
+        return {
+          ...summary,
+          status: 'confirmation_replayed',
+          quantity: prior.quantity,
+          checkedInAt: prior.checkedInAt,
+          checkedInBy: prior.staff.name,
+        };
+      }
+
+      if (quantity > remaining) {
+        throw new ConflictException(
+          `Only ${remaining} places remain. View the pass again.`,
+        );
+      }
+
+      const admitted = balance.admitted + quantity;
+      const batch = await this.repository.addAdmissionBatch(
+        tx,
+        pass.id,
         staffId,
+        requestId,
+        quantity,
+        admitted,
       );
 
       return {
-        status: admission.created ? 'checked_in' : 'already_checked_in',
-        guestName: invitation.guestName,
-        checkedInAt: admission.checkedInAt,
-        checkedInBy: admission.checkedInBy,
-        ticketTier: invitation.ticketTier,
+        ...summary,
+        status: 'checked_in',
+        quantity,
+        admitted,
+        remaining: pass.capacity - admitted,
+        checkedInAt: batch.checkedInAt,
+        checkedInBy: batch.staff.name,
       };
     });
   }
