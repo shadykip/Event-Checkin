@@ -119,12 +119,8 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
             }
 
             const receipt = result.receipt;
-            setSuccess({
-                kind: "paid",
-                tierName: receipt.tierName,
-                price: money(receipt.amountMinor, receipt.currency),
-                expiresAt: receipt.expiresAt,
-            });
+            sessionStorage.setItem(`ticket-checkout:${receipt.id}`, key);
+            router.push(`/checkout/${receipt.id}`);
         } catch {
             setError(
                 selected.id === "free"

@@ -389,15 +389,19 @@ export class StaffRepository {
 
   async lockValidInvitation(tx: DbClient, eventId: string, tokenHash: string) {
     const [invitation] = await tx.$queryRaw<
-      { id: string; guestName: string }[]
+      { id: string; guestName: string; ticketTier: string | null }[]
     >`
-      SELECT id, guest_name AS "guestName"
-      FROM invitations
-      WHERE event_id = ${eventId}::uuid
-        AND token_hash = ${tokenHash}
-        AND revoked_at IS NULL
-      FOR UPDATE
-    `;
+    SELECT i.id,
+           i.guest_name AS "guestName",
+           o.tier_name AS "ticketTier"
+    FROM invitations i
+    LEFT JOIN ticket_orders o ON o.invitation_id = i.id
+    WHERE i.event_id = ${eventId}::uuid
+      AND i.token_hash = ${tokenHash}
+      AND i.revoked_at IS NULL
+    FOR UPDATE OF i
+  `;
+
     return invitation;
   }
 

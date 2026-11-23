@@ -17,6 +17,7 @@ type Admission = {
   guestName: string;
   checkedInAt: string;
   checkedInBy: string;
+  ticketTier?: string | null;
 };
 
 type EntryMode = "idle" | "camera" | "manual" | "scanned";
@@ -160,6 +161,10 @@ export default function CheckInForm({ slug, onConfirmed }: CheckInFormProps) {
               {" · Nairobi time · "}
               {admission.checkedInBy}
             </p>
+
+            {admission.ticketTier && (
+              <p className="mt-1 text-sm font-semibold">Ticket · {admission.ticketTier}</p>
+            )}
           </div>
         )}
       </div>

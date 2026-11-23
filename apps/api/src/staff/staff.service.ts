@@ -595,6 +595,7 @@ export class StaffService {
         guestName: invitation.guestName,
         checkedInAt: admission.checkedInAt,
         checkedInBy: admission.checkedInBy,
+        ticketTier: invitation.ticketTier,
       };
     });
   }

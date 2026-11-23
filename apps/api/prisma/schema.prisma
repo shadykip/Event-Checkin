@@ -60,6 +60,11 @@ model TicketOrder {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
   paidAt      DateTime? @map("paid_at") @db.Timestamptz(3)
+  checkoutUrl   String?     @map("checkout_url")
+  paymentReview String?     @map("payment_review")
+  emailSentAt   DateTime?   @map("email_sent_at") @db.Timestamptz(3)
+  invitationId  String?     @unique @map("invitation_id") @db.Uuid
+  invitation    Invitation? @relation(fields: [invitationId], references: [id], onDelete: Restrict)
 
   tier TicketTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
 
@@ -105,6 +110,7 @@ model Invitation {
   rsvpStatus      RsvpStatus @default(PENDING) @map("rsvp_status")
   rsvpRespondedAt DateTime?  @map("rsvp_responded_at") @db.Timestamptz(3)
   isPublicTicket  Boolean    @default(false) @map("is_public_ticket")
+  ticketOrder TicketOrder?
 
   @@unique([eventId, guestEmail])
   @@map("invitations")
