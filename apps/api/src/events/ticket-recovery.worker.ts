@@ -54,7 +54,7 @@ export class TicketRecoveryWorker
         let order = await this.repository.read(job.id);
 
         if (!order.paymentReview && !order.invitationId) {
-          await this.payments.reconcile(job.id);
+          await this.payments.reconcile(order.purchaseId ?? job.id);
           order = await this.repository.read(job.id);
         }
 

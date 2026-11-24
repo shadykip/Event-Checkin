@@ -14,6 +14,15 @@ import {
   lockTicketTier,
 } from './ticket-inventory';
 import { PaystackService } from './paystack.service';
+import {
+  canEditQuantity,
+  checkoutKey,
+  findBooking,
+  lockedBooking,
+  maximumQuantity,
+  type PaymentBooking,
+} from './payment-booking';
+import { changeTicketQuantity } from './change-ticket-quantity';
 
 type Tx = Prisma.TransactionClient;
 
@@ -37,74 +46,99 @@ export class TicketPaymentService {
       .digest('base64url');
   }
 
-  private async owned(id: string, checkoutKey: unknown) {
-    if (
-      typeof checkoutKey !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        checkoutKey,
-      )
-    ) {
-      throw new NotFoundException('Order unavailable.');
-    }
-
-    const order = await this.db.ticketOrder.findFirst({
-      where: { id, checkoutKey },
-    });
-    if (!order) throw new NotFoundException('Order unavailable.');
-    return order;
-  }
-
-  private async lockOrder(tx: Tx, id: string) {
-    await tx.$queryRaw`
-      SELECT id FROM ticket_orders WHERE id = ${id}::uuid FOR UPDATE
-    `;
-    return tx.ticketOrder.findUniqueOrThrow({
-      where: { id },
-      include: { tier: { include: { event: true } } },
+  private readBooking(id: string, key?: string) {
+    return this.db.$transaction((tx) => findBooking(tx, id, key), {
+      isolationLevel: 'RepeatableRead',
     });
   }
 
-  async start(id: string, key: unknown) {
-    const owner = await this.owned(id, key);
-    this.token(id); // Validate fulfillment configuration before opening checkout.
+  private async owned(id: string, key: string) {
+    const booking = await this.readBooking(id, key);
+    if (!booking) throw new NotFoundException('Order unavailable.');
+    return booking;
+  }
 
-    const startedAt = new Date();
+  async changeQuantity(
+    id: string,
+    rawKey: unknown,
+    previous: unknown,
+    quantity: unknown,
+    added: unknown,
+  ) {
+    const key = checkoutKey(rawKey);
+    const initial = await this.owned(id, key);
+    await this.db.$transaction(async (tx) => {
+      await lockTicketTier(tx, initial.tier.eventId, initial.tierId);
+      const booking = await lockedBooking(tx, id, key);
+      await changeTicketQuantity(tx, booking, key, previous, quantity, added);
+    });
+    return this.status(id, key, false);
+  }
 
-    await this.db.ticketOrder.updateMany({
-      where: {
-        id: owner.id,
-        paymentStartedAt: null,
-        paidAt: null,
-        paymentReview: null,
-        expiresAt: { gt: startedAt },
-      },
-      data: {
-        paymentStartedAt: startedAt,
-        recoveryAfter: new Date(startedAt.getTime() + 60_000),
-      },
+  private async updatePayment(
+    tx: Tx,
+    booking: PaymentBooking,
+    data: {
+      paymentStartedAt?: Date;
+      checkoutUrl?: string;
+      paidAt?: Date;
+      paymentReview?: string;
+    },
+  ) {
+    const where = { id: booking.id };
+    if (booking.kind === 'purchase')
+      await tx.ticketPurchase.update({ where, data });
+    else await tx.ticketOrder.update({ where, data });
+  }
+
+  async start(id: string, rawKey: unknown, expectedAmount?: unknown) {
+    const key = checkoutKey(rawKey);
+    await this.owned(id, key);
+    this.token(id);
+
+    // Commit the frozen amount and enqueue recovery before contacting the provider.
+    await this.db.$transaction(async (tx) => {
+      const booking = await lockedBooking(tx, id, key);
+      const now = await inventoryTime(tx);
+      if (booking.paidAt || booking.paymentReview)
+        throw new ConflictException(
+          'Check the payment status for this booking.',
+        );
+      if (booking.expiresAt <= now)
+        throw new ConflictException('Reservation expired. Reserve again.');
+      if (
+        (expectedAmount !== undefined || booking.quantity > 1) &&
+        expectedAmount !== booking.amountMinor
+      ) {
+        throw new ConflictException(
+          'Your booking total changed. Refresh checkout before paying.',
+        );
+      }
+      if (booking.paymentStartedAt) return;
+      await this.updatePayment(tx, booking, { paymentStartedAt: now });
+      await tx.ticketOrder.update({
+        where: { id: booking.tickets[0].id },
+        data: { recoveryAfter: new Date(now.getTime() + 60_000) },
+      });
     });
 
-    // Serialize initialization per order. The provider call has a bounded timeout.
     return this.db.$transaction(
       async (tx) => {
-        const order = await this.lockOrder(tx, owner.id);
-        if (order.paidAt || order.paymentReview) {
+        const booking = await lockedBooking(tx, id, key);
+        if (booking.paidAt || booking.paymentReview)
           throw new ConflictException(
-            'Payment already received. Check your order.',
+            'Check the payment status for this booking.',
           );
-        }
-
-        if (order.expiresAt <= (await inventoryTime(tx))) {
+        if (booking.expiresAt <= (await inventoryTime(tx)))
           throw new ConflictException('Reservation expired. Reserve again.');
-        }
-
-        if (order.checkoutUrl) return { url: order.checkoutUrl };
-
-        const url = await this.paystack.initialize(order);
-        await tx.ticketOrder.update({
-          where: { id },
-          data: { checkoutUrl: url },
+        if (booking.checkoutUrl) return { url: booking.checkoutUrl };
+        const url = await this.paystack.initialize({
+          id: booking.id,
+          guestEmail: booking.buyerEmail,
+          amountMinor: booking.amountMinor,
+          currency: booking.currency,
         });
+        await this.updatePayment(tx, booking, { checkoutUrl: url });
         return { url };
       },
       { timeout: 15_000 },
@@ -112,96 +146,97 @@ export class TicketPaymentService {
   }
 
   async reconcile(id: string) {
-    const initial = await this.db.ticketOrder.findUnique({ where: { id } });
-    // if (!initial || initial.paymentReview) return;
-    // if (initial.invitationId) {
-    //   await this.deliver(id);
-    //   return;
-    // }
-    if (!initial || initial.paymentReview || initial.invitationId) return;
+    const initial = await this.readBooking(id);
+    if (
+      !initial ||
+      initial.paidAt ||
+      initial.paymentReview ||
+      (!initial.paymentStartedAt && !initial.checkoutUrl)
+    )
+      return;
     const payment = await this.paystack.verify(id);
     if (payment.status !== 'success') return;
 
-    const token = this.token(id);
-    const hash = createHash('sha256').update(token).digest('hex');
-
     await this.db.$transaction(async (tx) => {
-      const order = await this.lockOrder(tx, id);
-      if (order.invitationId || order.paymentReview) return;
-
+      await lockTicketTier(tx, initial.tier.eventId, initial.tierId);
+      const booking = await lockedBooking(tx, id);
+      if (booking.paidAt || booking.paymentReview) return;
+      const now = await inventoryTime(tx);
+      const paidAt = new Date(payment.paid_at ?? '');
       let review: string | undefined;
-      const paidAt = payment.paid_at ? new Date(payment.paid_at) : null;
-
       if (
         payment.reference !== `ticket-${id}` ||
         payment.domain !== 'test' ||
-        payment.currency !== order.currency ||
-        payment.amount !== order.amountMinor ||
-        !paidAt ||
+        payment.currency !== booking.currency ||
+        payment.amount !== booking.amountMinor ||
         !Number.isFinite(paidAt.getTime())
       ) {
         review = 'Provider transaction did not match the order.';
-      }
-
-      await lockTicketTier(tx, order.tier.eventId, order.tierId);
-      const now = await inventoryTime(tx);
-      const tier = await tx.ticketTier.findUniqueOrThrow({
-        where: { id: order.tierId },
-      });
-
-      if (!review && paidAt) {
-        if (paidAt >= order.expiresAt) {
-          review = 'Payment received after reservation expiry.';
-        } else if (now >= order.expiresAt) {
-          // A delayed notification can arrive after another buyer acquired the seat.
-          const used = await committedTickets(tx, tier.id, now);
-          if (used >= tier.capacity)
-            review = 'Seat reallocated before confirmation.';
-        }
+      } else if (paidAt >= booking.expiresAt) {
+        review = 'Payment received after reservation expiry.';
+      } else if (now >= booking.expiresAt) {
+        const used = await committedTickets(tx, booking.tierId, now);
+        if (used + booking.quantity > booking.tier.capacity)
+          review = 'Seats reallocated before confirmation.';
       }
 
       if (!review) {
-        const inserted = await tx.invitation.createMany({
-          data: [
-            {
-              eventId: tier.eventId,
-              guestName: order.guestName,
-              guestEmail: order.guestEmail,
-              tokenHash: hash,
-              isPublicTicket: false,
-            },
-          ],
+        const tickets = booking.tickets.map((ticket) => ({
+          ...ticket,
+          tokenHash: createHash('sha256')
+            .update(this.token(ticket.id))
+            .digest('hex'),
+        }));
+        const inserted = await tx.invitation.createManyAndReturn({
+          data: tickets.map(({ guestName, guestEmail, tokenHash }) => ({
+            guestName,
+            guestEmail,
+            tokenHash,
+            eventId: booking.tier.eventId,
+            isPublicTicket: false,
+          })),
+          select: { id: true, tokenHash: true },
           skipDuplicates: true,
         });
-        if (inserted.count !== 1)
-          review = 'Guest already has an event invitation.';
+        if (inserted.length === tickets.length) {
+          const invitations = new Map(
+            inserted.map((invite) => [invite.tokenHash, invite.id]),
+          );
+          for (const ticket of tickets) {
+            await tx.ticketOrder.update({
+              where: { id: ticket.id },
+              data: {
+                paidAt,
+                invitationId: invitations.get(ticket.tokenHash)!,
+                recoveryAttempts: 0,
+              },
+            });
+          }
+          await tx.ticketOrder.updateMany({
+            where: {
+              id: { in: tickets.map((ticket) => ticket.id) },
+              recoveryLease: null,
+            },
+            data: { recoveryAfter: now },
+          });
+          if (booking.kind === 'purchase')
+            await this.updatePayment(tx, booking, { paidAt });
+          return;
+        }
+        // Remove only the rows this transaction inserted. No partial set of passes becomes visible.
+        await tx.invitation.deleteMany({
+          where: { id: { in: inserted.map((invite) => invite.id) } },
+        });
+        review = 'An attendee already has an event invitation.';
       }
-
-      if (review) {
-        await tx.ticketOrder.update({
-          where: { id },
+      await this.updatePayment(tx, booking, { paymentReview: review });
+      if (booking.kind === 'purchase') {
+        await tx.ticketOrder.updateMany({
+          where: { purchaseId: id },
           data: { paymentReview: review },
         });
-        return;
       }
-
-      const invitation = await tx.invitation.findUniqueOrThrow({
-        where: { tokenHash: hash },
-        select: { id: true },
-      });
-
-      await tx.ticketOrder.update({
-        where: { id },
-        data: {
-          paidAt,
-          invitationId: invitation.id,
-          recoveryAfter: order.recoveryLease ? order.recoveryAfter : now,
-          recoveryAttempts: 0,
-        },
-      });
     });
-
-    // await this.deliver(id);
   }
 
   async deliverPendingPass(id: string) {
@@ -223,44 +258,58 @@ export class TicketPaymentService {
     });
   }
 
-  async status(id: string, key: unknown, verify: boolean) {
-    const owner = await this.owned(id, key);
-
-    if (verify && !owner.paymentReview && !owner.invitationId) {
+  async status(id: string, rawKey: unknown, verify: boolean) {
+    const key = checkoutKey(rawKey);
+    let booking = await this.owned(id, key);
+    if (
+      verify &&
+      !booking.paidAt &&
+      !booking.paymentReview &&
+      (booking.paymentStartedAt || booking.checkoutUrl)
+    ) {
       await this.reconcile(id);
+      booking = await this.owned(id, key);
     }
-
-    const order = await this.db.ticketOrder.findUniqueOrThrow({
-      where: { id },
-      include: { invitation: true },
-    });
-
     const common = {
-      tierName: order.tierName,
-      peoplePerTicket: order.peoplePerTicket,
-      amountMinor: order.amountMinor,
-      currency: order.currency,
-      expiresAt: order.expiresAt,
+      tierName: booking.tierName,
+      eventSlug: booking.tier.event.slug,
+      quantity: booking.quantity,
+      peoplePerTicket: booking.peoplePerTicket,
+      unitAmountMinor: booking.unitAmountMinor,
+      amountMinor: booking.amountMinor,
+      currency: booking.currency,
+      expiresAt: booking.expiresAt,
     };
-
-    if (order.paymentReview) return { ...common, state: 'review' };
-    if (order.invitation) {
-      const token = this.token(id);
-      const current =
-        !order.invitation.revokedAt &&
-        order.invitation.tokenHash ===
-          createHash('sha256').update(token).digest('hex');
-
+    if (booking.paymentReview) return { ...common, state: 'review' };
+    if (booking.paidAt) {
+      const passes = booking.tickets.map((ticket, index) => {
+        const token = this.token(ticket.id);
+        const current =
+          ticket.invitation &&
+          !ticket.invitation.revokedAt &&
+          ticket.invitation.tokenHash ===
+            createHash('sha256').update(token).digest('hex');
+        return {
+          ticketNumber: index + 1,
+          guestName: ticket.guestName,
+          passPath: current ? `/pass#${token}` : undefined,
+        };
+      });
       return {
         ...common,
-        state: current ? 'paid' : 'pass_changed',
-        passPath: current ? `/pass#${token}` : undefined,
+        state: passes.some((pass) => pass.passPath) ? 'paid' : 'pass_changed',
+        passPath: passes.length === 1 ? passes[0].passPath : undefined,
+        passes: passes.length > 1 ? passes : undefined,
       };
     }
-
+    const now = new Date();
+    if (booking.expiresAt <= now) return { ...common, state: 'expired' };
     return {
       ...common,
-      state: order.expiresAt <= new Date() ? 'expired' : 'reserved',
+      state: 'reserved',
+      maxQuantity: canEditQuantity(booking, now)
+        ? await maximumQuantity(this.db, booking, now)
+        : undefined,
     };
   }
 }

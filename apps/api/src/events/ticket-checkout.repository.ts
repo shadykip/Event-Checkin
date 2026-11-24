@@ -11,6 +11,7 @@ import {
   inventoryTime,
   lockTicketTier,
 } from './ticket-inventory';
+import { existingPurchase, holdPurchase, type Reservation } from './ticket-purchase-reservation';
 
 const HOLD_MS = 15 * 60 * 1000;
 
@@ -22,14 +23,6 @@ const receipt = {
   currency: true,
   expiresAt: true,
 } as const;
-
-type Reservation = {
-  slug: string;
-  tierId: string;
-  checkoutKey: string;
-  guestName: string;
-  guestEmail: string;
-};
 
 @Injectable()
 export class TicketCheckoutRepository {
@@ -89,6 +82,7 @@ export class TicketCheckoutRepository {
 
         if (previous) {
           if (
+            input.attendees ||
             previous.guestName !== input.guestName ||
             previous.guestEmail !== input.guestEmail
           ) {
@@ -113,6 +107,9 @@ export class TicketCheckoutRepository {
             expiresAt: previous.expiresAt,
           };
         }
+
+        const replay = await existingPurchase(tx, input, now);
+        if (replay) return replay;
 
         const tier = await tx.ticketTier.findUniqueOrThrow({
           where: { id: input.tierId },
@@ -142,6 +139,9 @@ export class TicketCheckoutRepository {
             tier.salesEndAt?.getTime() ?? Infinity,
           ),
         );
+
+        const purchase = await holdPurchase(tx, input, tier, expiresAt, tier.capacity - committed);
+        if (purchase) return purchase;
 
         return tx.ticketOrder.create({
           data: {

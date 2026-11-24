@@ -1,22 +1,15 @@
 import { publicStyles } from "../../public-styles";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import PublicShell from "../../public-shell";
 import PublicEventBanner from "../../public-event-banner";
-import {
-  eventDate,
-  eventTime,
-  ticketSummary,
-  type PublicEvent,
-} from "../../public-events";
+import { eventDate, eventTime, ticketSummary } from "../../public-events";
 import TicketChoiceForm from "./ticket-choice-form";
+import { getPublicEvent } from "./event-data";
+
+export { generateMetadata } from "./metadata";
 
 type Props = { params: Promise<{ slug: string }> };
-type EventDetails = PublicEvent & {
-  description: string | null;
-  descriptionHtml: string | null;
-};
 
 export default function EventPage({ params }: Props) {
   return (
@@ -28,6 +21,7 @@ export default function EventPage({ params }: Props) {
         >
           Back to events
         </Link>
+
         <Suspense
           fallback={
             <p role="status" className="py-12 text-slate-600">
@@ -44,19 +38,10 @@ export default function EventPage({ params }: Props) {
 
 async function EventDetail({ params }: Props) {
   const { slug } = await params;
-  let response: Response;
-  try {
-    response = await fetch(
-      new URL(`/events/${encodeURIComponent(slug)}`, process.env.API_BASE_URL),
-      { cache: "no-store" },
-    );
-  } catch {
-    return <EventUnavailable />;
-  }
-  if (response.status === 404) notFound();
-  if (!response.ok) return <EventUnavailable />;
+  const event = await getPublicEvent(slug);
 
-  const event: EventDetails = await response.json();
+  if (!event) return <EventUnavailable />;
+
   const startsAt = new Date(event.startsAt);
   const summary = ticketSummary(event);
 
@@ -66,6 +51,7 @@ async function EventDetail({ params }: Props) {
         {event.hasBanner && (
           <PublicEventBanner slug={slug} hasBanner wide priority />
         )}
+
         <div className="p-6 sm:p-10">
           <time
             className="text-sm font-semibold leading-6 text-teal-800"
@@ -73,13 +59,16 @@ async function EventDetail({ params }: Props) {
           >
             {eventDate.format(startsAt)} · {eventTime.format(startsAt)} EAT
           </time>
+
           <h1 className="mt-4 max-w-5xl break-words text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
             {event.name}
           </h1>
+
           <div className="mt-6 flex flex-wrap items-center justify-between gap-5">
             <p className="max-w-2xl break-words leading-7 text-slate-600">
               {event.venue}
             </p>
+
             <a
               href="#tickets"
               className={
@@ -104,6 +93,7 @@ async function EventDetail({ params }: Props) {
             tiers={event.ticketTiers}
           />
         </div>
+
         <section
           className="min-w-0 lg:col-start-1 lg:row-start-1 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8"
           aria-labelledby="about-event"
@@ -111,6 +101,7 @@ async function EventDetail({ params }: Props) {
           <h2 id="about-event" className="text-xl font-semibold tracking-tight">
             About this event
           </h2>
+
           {event.descriptionHtml ? (
             <div
               className="mt-5 break-words text-base leading-8 text-slate-600 [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-7 [&_h2]:text-slate-950 [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:leading-7 [&_h3]:text-slate-950 [&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p+p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:pl-6 [&_li+li]:mt-2"
@@ -121,6 +112,7 @@ async function EventDetail({ params }: Props) {
               {event.description || `Join us at ${event.venue}.`}
             </p>
           )}
+
           <dl className="mt-8 grid gap-5 border-t border-slate-200 pt-6 [&_dt]:text-sm [&_dt]:text-slate-500 [&_dd]:mt-1 [&_dd]:break-words [&_dd]:font-semibold [&_dd]:leading-7">
             <div>
               <dt>Date and time</dt>
@@ -128,6 +120,7 @@ async function EventDetail({ params }: Props) {
                 {eventDate.format(startsAt)} · {eventTime.format(startsAt)} EAT
               </dd>
             </div>
+
             <div>
               <dt>Venue</dt>
               <dd>{event.venue}</dd>

@@ -41,6 +41,7 @@ export class TicketRecoveryRepository {
     return this.db.ticketOrder.findUniqueOrThrow({
       where: { id },
       select: {
+        purchaseId: true,
         invitationId: true,
         emailSentAt: true,
         paymentReview: true,

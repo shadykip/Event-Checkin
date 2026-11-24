@@ -11,6 +11,11 @@ import {
   type PublicTier,
 } from "../../public-events";
 import { reserveTicket } from "./reserve-ticket";
+import {
+  AdditionalAttendees,
+  readAdditionalAttendees,
+  TicketQuantity,
+} from "../../ticket-quantity";
 
 export type { PublicTier } from "../../public-events";
 
@@ -43,6 +48,7 @@ function tierStatus(tier: PublicTier) {
 export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
   const router = useRouter();
   const [choice, setChoice] = useState("");
+  const [count, setCount] = useState(1);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<{
@@ -78,6 +84,20 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
   const selected =
     available.find((option) => option.id === choice) ??
     (!choice && available.length === 1 ? available[0] : undefined);
+  const tier = tiers.find((item) => item.id === selected?.id);
+  const individual = tier?.peoplePerTicket === 1;
+  const maximum =
+    tier && individual
+      ? Math.max(
+          1,
+          Math.min(
+            10,
+            tier.remaining,
+            Math.floor(2_147_483_647 / tier.priceMinor),
+          ),
+        )
+      : 1;
+  const quantity = Math.min(count, maximum);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -127,11 +147,26 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
         return;
       }
 
+      const attendees =
+        quantity > 1
+          ? [
+              { guestName, guestEmail },
+              ...readAdditionalAttendees(form, 2, quantity),
+            ]
+          : undefined;
+      if (
+        attendees &&
+        new Set(attendees.map((guest) => guest.guestEmail)).size !== quantity
+      ) {
+        setError("Use a different attendee email for each ticket.");
+        return;
+      }
       const signature = JSON.stringify([
         slug,
         selected.id,
         guestName,
         guestEmail,
+        attendees,
       ]);
       const key = retryKeys.current.get(signature) ?? crypto.randomUUID();
       retryKeys.current.set(signature, key);
@@ -142,6 +177,7 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
         key,
         guestName,
         guestEmail,
+        attendees,
       );
       if ("error" in result) {
         setError(result.error);
@@ -230,6 +266,7 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
                   checked={selected?.id === option.id}
                   onChange={() => {
                     setChoice(option.id);
+                    setCount(1);
                     setError("");
                   }}
                   required
@@ -254,11 +291,34 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
 
           {available.length > 0 ? (
             <>
+              {individual && (
+                <div className="mt-6">
+                  <TicketQuantity
+                    value={quantity}
+                    maximum={maximum}
+                    disabled={busy}
+                    onChange={(n) => {
+                      setCount(n);
+                      setError("");
+                    }}
+                  />
+                  {maximum === 1 && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      One ticket is available for this booking.
+                    </p>
+                  )}
+                </div>
+              )}
               <fieldset
                 disabled={busy}
                 className="mt-6 grid min-w-0 gap-4 border-0 border-t border-slate-200 px-0 py-5 [&_legend]:sr-only"
               >
                 <legend>Ticket holder details</legend>
+                {quantity > 1 && (
+                  <p className="text-sm font-semibold text-slate-800">
+                    Ticket 1 · Your details
+                  </p>
+                )}
                 <label className="grid gap-2 text-sm font-semibold">
                   Full name
                   <input
@@ -281,6 +341,20 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
                   />
                 </label>
               </fieldset>
+              {quantity > 1 && (
+                <div className="mb-5">
+                  <p className="text-sm leading-6 text-slate-600">
+                    Each attendee receives a separate QR pass by email.
+                  </p>
+                  <fieldset
+                    disabled={busy}
+                    className="m-0 min-w-0 border-0 p-0"
+                  >
+                    <legend className="sr-only">Additional attendees</legend>
+                    <AdditionalAttendees first={2} last={quantity} />
+                  </fieldset>
+                </div>
+              )}
 
               {selected && (
                 <dl
@@ -288,12 +362,23 @@ export default function TicketChoiceForm({ slug, freeStatus, tiers }: Props) {
                   aria-live="polite"
                 >
                   <div>
-                    <dt>One ticket · {selected.name}</dt>
-                    <dd>{admissions(selected.people)}</dd>
+                    <dt>
+                      {quantity} {quantity === 1 ? "ticket" : "tickets"} ·{" "}
+                      {selected.name}
+                    </dt>
+                    <dd>
+                      {quantity > 1
+                        ? `${selected.price} per ticket`
+                        : admissions(selected.people)}
+                    </dd>
                   </div>
                   <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-slate-200 pt-3 [&_dd]:text-xl">
                     <dt>Total</dt>
-                    <dd>{selected.price}</dd>
+                    <dd>
+                      {tier
+                        ? money(tier.priceMinor * quantity, tier.currency)
+                        : selected.price}
+                    </dd>
                   </div>
                 </dl>
               )}
