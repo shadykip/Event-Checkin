@@ -24,7 +24,11 @@ function getDatabaseUrl(): string {
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
-    super({ adapter: new PrismaPg({ connectionString: getDatabaseUrl() }) });
+    const url = new URL(getDatabaseUrl());
+    const options = url.searchParams.get('options') ?? process.env.PGOPTIONS;
+    // Keep timestamp reads and writes consistent with the Prisma pg adapter.
+    url.searchParams.set('options', [options, '-c timezone=UTC'].filter(Boolean).join(' '));
+    super({ adapter: new PrismaPg({ connectionString: url.toString() }) });
   }
 
   async onModuleDestroy() {

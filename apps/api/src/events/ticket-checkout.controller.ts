@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { validateGuest } from '../staff/guest-import';
 import { TicketCheckoutRepository } from './ticket-checkout.repository';
+import { reservationAttendees } from './ticket-purchase-reservation';
 
 @Controller('events/:slug/ticket-tiers')
 export class TicketCheckoutController {
@@ -32,6 +33,8 @@ export class TicketCheckoutController {
     checkoutKey: string,
     @Body('guestName') rawName: unknown,
     @Body('guestEmail') rawEmail: unknown,
+    @Body('quantity') quantity?: unknown,
+    @Body('attendees') attendees?: unknown,
   ) {
     const { guestName, guestEmail, error } = validateGuest(rawName, rawEmail);
     if (error) throw new BadRequestException(error);
@@ -41,6 +44,7 @@ export class TicketCheckoutController {
       checkoutKey,
       guestName,
       guestEmail,
+      attendees: reservationAttendees(quantity, attendees),
     });
   }
 }

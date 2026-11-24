@@ -26,8 +26,25 @@ export class TicketPaymentController {
   @Post('orders/:id/start')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
-  start(@Param('id', ParseUUIDPipe) id: string, @Body('key') key: unknown) {
-    return this.payments.start(id, key);
+  start(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('key') key: unknown,
+    @Body('expectedAmountMinor') expectedAmount?: unknown,
+  ) {
+    return this.payments.start(id, key, expectedAmount);
+  }
+
+  @Post('orders/:id/quantity')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  quantity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('key') key: unknown,
+    @Body('previousQuantity') previous: unknown,
+    @Body('quantity') quantity: unknown,
+    @Body('additionalAttendees') attendees: unknown,
+  ) {
+    return this.payments.changeQuantity(id, key, previous, quantity, attendees);
   }
 
   @Post('orders/:id/status')

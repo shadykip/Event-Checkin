@@ -22,6 +22,12 @@ export class EventsService {
     return event;
   }
 
+  async banner(slug: string) {
+    const banner = await this.repository.findBanner(slug);
+    if (!banner) throw new NotFoundException('Event banner not found');
+    return Buffer.from(banner.image);
+  }
+
   async claim(slug: string, rawName: unknown, rawEmail: unknown) {
     const { guestName, guestEmail, error } = validateGuest(rawName, rawEmail);
     if (error) throw new BadRequestException(error);

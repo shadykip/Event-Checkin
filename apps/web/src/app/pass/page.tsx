@@ -4,11 +4,16 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import GuestRsvp, { type RsvpStatus } from "./guest-rsvp";
 import AddToCalendar from "./add-to-calendar";
+import { admissions } from "../public-events";
 
 
 type Invitation = {
   guestName: string;
   rsvpStatus: RsvpStatus;
+  ticket: {
+    name: string;
+    peoplePerTicket: number;
+  };
   event: {
     id: string;
     name: string;
@@ -173,6 +178,23 @@ export default function GuestPassPage() {
             className="flex flex-col justify-center px-5 py-5 sm:px-7 sm:py-6"
           >
             <dl className="space-y-5">
+              <div>
+                <dt className="text-sm font-medium text-slate-600">
+                  Ticket type
+                </dt>
+                <dd className="mt-1 break-words font-semibold leading-6">
+                  {invitation.ticket.name}
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-sm font-medium text-slate-600">
+                  Admission allowance
+                </dt>
+                <dd className="mt-1 font-semibold leading-6">
+                  {admissions(invitation.ticket.peoplePerTicket)}
+                </dd>
+              </div>
               <div>
                 <dt className="text-sm font-medium text-slate-600">
                   Date and time
