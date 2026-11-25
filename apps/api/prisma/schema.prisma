@@ -51,28 +51,34 @@ model TicketTier {
 }
 
 model TicketPurchase {
-  id              String   @id @default(uuid()) @db.Uuid
-  tierId          String   @map("tier_id") @db.Uuid
-  checkoutKey     String   @map("checkout_key") @db.Uuid
-  buyerName       String   @map("buyer_name")
-  buyerEmail      String   @map("buyer_email")
-  paymentStartedAt DateTime? @map("payment_started_at") @db.Timestamptz(3)
-  checkoutUrl      String?   @map("checkout_url")
-  paidAt           DateTime? @map("paid_at") @db.Timestamptz(3)
-  paymentReview    String?   @map("payment_review")
-  quantity        Int
-  peoplePerTicket Int      @map("people_per_ticket")
-  unitAmountMinor Int      @map("unit_amount_minor")
-  amountMinor     Int      @map("amount_minor")
-  currency        String   @db.Char(3)
-  expiresAt       DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                  String        @id @default(uuid()) @db.Uuid
+  tierId              String        @map("tier_id") @db.Uuid
+  checkoutKey         String        @map("checkout_key") @db.Uuid
+  buyerName           String        @map("buyer_name")
+  buyerEmail          String        @map("buyer_email")
+  quantity            Int
+  peoplePerTicket     Int           @map("people_per_ticket")
+  unitAmountMinor     Int           @map("unit_amount_minor")
+  amountMinor         Int           @map("amount_minor")
+  currency            String        @db.Char(3)
+  expiresAt           DateTime      @map("expires_at") @db.Timestamptz(3)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  paymentStartedAt    DateTime?     @map("payment_started_at") @db.Timestamptz(3)
+  checkoutUrl         String?       @map("checkout_url")
+  paidAt              DateTime?     @map("paid_at") @db.Timestamptz(3)
+  paymentReview       String?       @map("payment_review")
+  recoveryRequestedAt DateTime?     @map("recovery_requested_at") @db.Timestamptz(3)
+  reviewResolution    String?   @map("review_resolution")
+  reviewNote          String?   @map("review_note")
+  reviewResolvedAt    DateTime? @map("review_resolved_at") @db.Timestamptz(3)
+  reviewResolvedBy    String?   @map("review_resolved_by") @db.Uuid
+  providerFeeMinor Int? @map("provider_fee_minor")
 
-  tier   TicketTier    @relation(fields: [tierId], references: [id], onDelete: Restrict)
   orders TicketOrder[]
+  tier   TicketTier @relation(fields: [tierId], references: [id])
 
-  @@unique([tierId, checkoutKey])
   @@unique([id, tierId])
+  @@unique([tierId, checkoutKey])
   @@map("ticket_purchases")
 }
 
@@ -80,9 +86,7 @@ model TicketOrder {
   peoplePerTicket Int         @default(1) @map("people_per_ticket")
   id              String      @id @default(uuid()) @db.Uuid
   tierId          String      @map("tier_id") @db.Uuid
-  checkoutKey  String? @map("checkout_key") @db.Uuid
-  purchaseId   String? @map("purchase_id") @db.Uuid
-  ticketNumber Int?    @map("ticket_number")
+  checkoutKey     String?     @map("checkout_key") @db.Uuid
   guestName       String      @map("guest_name")
   guestEmail      String      @map("guest_email")
   tierName        String      @map("tier_name")
@@ -95,21 +99,31 @@ model TicketOrder {
   paymentReview   String?     @map("payment_review")
   emailSentAt     DateTime?   @map("email_sent_at") @db.Timestamptz(3)
   invitationId    String?     @unique @map("invitation_id") @db.Uuid
+  purchaseId   String? @map("purchase_id") @db.Uuid
+  ticketNumber Int?    @map("ticket_number")
+  reviewResolution String?   @map("review_resolution")
+  reviewNote       String?   @map("review_note")
+  reviewResolvedAt DateTime? @map("review_resolved_at") @db.Timestamptz(3)
+  reviewResolvedBy String?   @map("review_resolved_by") @db.Uuid
   invitation      Invitation? @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+  providerFeeMinor Int? @map("provider_fee_minor")
 
   tier TicketTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
-  purchase TicketPurchase? @relation(fields: [purchaseId, tierId], references: [id, tierId], onDelete: Restrict, onUpdate: NoAction)
+
+  purchase TicketPurchase? @relation(fields: [purchaseId, tierId], references: [id, tierId], onUpdate: NoAction)
 
   paymentStartedAt DateTime? @map("payment_started_at") @db.Timestamptz(3)
   recoveryAfter    DateTime? @map("recovery_after") @db.Timestamptz(3)
   recoveryAttempts Int       @default(0) @map("recovery_attempts")
   recoveryLease    String?   @map("recovery_lease") @db.Uuid
+  recoveryRequestedAt DateTime? @map("recovery_requested_at") @db.Timestamptz(3)
+  
 
   @@unique([tierId, checkoutKey])
-  @@unique([purchaseId, ticketNumber])
   @@index([recoveryAfter, id])
   @@index([tierId, paidAt, expiresAt])
   @@map("ticket_orders")
+  @@unique([purchaseId, ticketNumber])
 }
 
 model TicketAllocation {

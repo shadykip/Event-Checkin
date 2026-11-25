@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
@@ -16,11 +17,13 @@ import { guestRosterCsv } from './guest-roster-csv';
 import {
   sendInvitationEmail,
   sendPasswordResetEmail,
+  sendStaffSetupEmail,
 } from './invitation-mailer';
 import { StaffRepository, type AdmissionStatus } from './staff.repository';
 import { prepareEventBanner } from './event-banner';
 import { parseEventDetails } from './event-details';
 import { parseTicketTier, type TicketTierInput } from './ticket-tier-input';
+import { TicketPaymentService } from '../events/ticket-payment.service';
 
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const rosterPageSize = 25;
@@ -35,7 +38,10 @@ function hashToken(token: string) {
 
 @Injectable()
 export class StaffService {
-  constructor(private readonly repository: StaffRepository) {}
+  constructor(
+    private readonly repository: StaffRepository,
+    private readonly payments: TicketPaymentService,
+  ) {}
   private readonly logger = new Logger(StaffService.name);
 
   async login(email: unknown, password: unknown) {
@@ -511,6 +517,7 @@ export class StaffService {
           rsvpStatus: row.rsvpStatus,
           invitedAt: row.createdAt,
           checkedInAt: checkIn?.checkedInAt ?? null,
+          isPaidTicket: Boolean(row.ticketOrder?.paidAt),
           status,
         };
       });
@@ -818,6 +825,148 @@ export class StaffService {
     });
   }
 
+  async inviteDoorStaff(
+    sessionToken: unknown,
+    slug: string,
+    rawName: unknown,
+    rawEmail: unknown,
+  ) {
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+    const email =
+      typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+    if (!name || name.length > 120) {
+      throw new BadRequestException(
+        'Enter a staff name of up to 120 characters.',
+      );
+    }
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('Enter a valid staff email address.');
+    }
+
+    const token = randomBytes(32).toString('base64url');
+    const tokenHash = hashToken(token);
+    const passwordHash = await argon2.hash(
+      randomBytes(32).toString('base64url'),
+      { type: argon2.argon2id },
+    );
+
+    const result = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      const event = await tx.event.findUniqueOrThrow({
+        where: { id: eventId },
+        select: { name: true },
+      });
+
+      const created = await tx.staffAccount.createMany({
+        data: [
+          {
+            name,
+            email,
+            passwordHash,
+            isActive: true,
+            canCreateEvents: false,
+            resetTokenHash: tokenHash,
+            resetRequestedAt: new Date(),
+            resetExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+          },
+        ],
+        skipDuplicates: true,
+      });
+
+      if (created.count !== 1) {
+        throw new ConflictException(
+          'A staff account already uses this email. Assign the existing account instead.',
+        );
+      }
+
+      const account = await tx.staffAccount.findUniqueOrThrow({
+        where: { email },
+        select: { id: true },
+      });
+
+      await tx.eventStaffAssignment.create({
+        data: {
+          eventId,
+          staffId: account.id,
+          role: 'DOOR_STAFF',
+        },
+      });
+
+      return {
+        eventName: event.name,
+        members: await this.repository.listEventTeam(tx, eventId),
+      };
+    });
+
+    try {
+      await sendStaffSetupEmail(name, email, result.eventName, token);
+      return {
+        message: 'Door staff invited. Password setup email sent.',
+        members: result.members,
+      };
+    } catch {
+      this.logger.warn('Door staff setup email delivery failed.');
+      return {
+        message:
+          'Door staff was created and assigned, but the setup email could not be sent. Ask them to use Forgot password.',
+        members: result.members,
+      };
+    }
+  }
+  async resendDoorStaffSetup(
+    sessionToken: unknown,
+    slug: string,
+    staffId: string,
+  ) {
+    const email = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const assignment = await tx.eventStaffAssignment.findFirst({
+        where: {
+          eventId,
+          staffId,
+          role: 'DOOR_STAFF',
+          staff: { isActive: true },
+        },
+        select: { staff: { select: { email: true } } },
+      });
+
+      if (!assignment) {
+        throw new NotFoundException(
+          'No active door staff assignment was found for this event.',
+        );
+      }
+
+      return assignment.staff.email;
+    });
+
+    const token = randomBytes(32).toString('base64url');
+    const account = await this.repository.issuePasswordReset(
+      email,
+      hashToken(token),
+    );
+
+    if (!account) {
+      throw new BadRequestException(
+        'A setup link cannot be sent right now. Please try again later.',
+      );
+    }
+
+    try {
+      await sendPasswordResetEmail(account.email, token);
+    } catch {
+      this.logger.warn('Door staff setup email delivery failed.');
+      throw new ServiceUnavailableException(
+        'The setup email could not be sent. Please try again.',
+      );
+    }
+
+    return {
+      message:
+        'A new password setup link was emailed to the door staff member.',
+    };
+  }
   removeDoorStaff(sessionToken: unknown, slug: string, staffId: string) {
     return this.repository.transaction(async (tx) => {
       const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
@@ -938,6 +1087,472 @@ export class StaffService {
     }
   }
 
+  async resendPaidPass(
+    sessionToken: unknown,
+    slug: string,
+    invitationId: string,
+  ) {
+    const order = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+      return tx.ticketOrder.findFirst({
+        where: {
+          invitationId,
+          paidAt: { not: null },
+          tier: { eventId },
+          invitation: { is: { revokedAt: null } },
+        },
+        select: { id: true },
+      });
+    });
+    if (!order) {
+      throw new NotFoundException('Paid pass unavailable for this event.');
+    }
+    return this.payments.resendCurrentPass(order.id);
+  }
+
+  listPaymentReviews(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const [purchases, individualOrders] = await Promise.all([
+        tx.ticketPurchase.findMany({
+          where: {
+            tier: { eventId },
+            paymentReview: { not: null },
+            reviewResolvedAt: null,
+          },
+          select: {
+            id: true,
+            buyerName: true,
+            buyerEmail: true,
+            amountMinor: true,
+            currency: true,
+            paymentReview: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        tx.ticketOrder.findMany({
+          where: {
+            tier: { eventId },
+            purchaseId: null,
+            paymentReview: { not: null },
+            reviewResolvedAt: null,
+          },
+          select: {
+            id: true,
+            guestName: true,
+            guestEmail: true,
+            amountMinor: true,
+            currency: true,
+            paymentReview: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+      ]);
+
+      const items = [
+        ...purchases.map((purchase) => ({
+          kind: 'purchase' as const,
+          reference: `ticket-${purchase.id}`,
+          name: purchase.buyerName,
+          email: purchase.buyerEmail,
+          amountMinor: purchase.amountMinor,
+          currency: purchase.currency,
+          reason: purchase.paymentReview,
+          createdAt: purchase.createdAt,
+        })),
+        ...individualOrders.map((order) => ({
+          kind: 'individual' as const,
+          reference: `ticket-${order.id}`,
+          name: order.guestName,
+          email: order.guestEmail,
+          amountMinor: order.amountMinor,
+          currency: order.currency,
+          reason: order.paymentReview,
+          createdAt: order.createdAt,
+        })),
+      ]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, 50);
+
+      return { items };
+    });
+  }
+
+  listResolvedPaymentReviews(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const [purchases, individualOrders] = await Promise.all([
+        tx.ticketPurchase.findMany({
+          where: {
+            tier: { eventId },
+            paymentReview: { not: null },
+            reviewResolvedAt: { not: null },
+          },
+          select: {
+            id: true,
+            buyerName: true,
+            amountMinor: true,
+            currency: true,
+            paymentReview: true,
+            reviewResolution: true,
+            reviewNote: true,
+            reviewResolvedAt: true,
+            reviewResolvedBy: true,
+          },
+          orderBy: { reviewResolvedAt: 'desc' },
+          take: 50,
+        }),
+        tx.ticketOrder.findMany({
+          where: {
+            tier: { eventId },
+            purchaseId: null,
+            paymentReview: { not: null },
+            reviewResolvedAt: { not: null },
+          },
+          select: {
+            id: true,
+            guestName: true,
+            amountMinor: true,
+            currency: true,
+            paymentReview: true,
+            reviewResolution: true,
+            reviewNote: true,
+            reviewResolvedAt: true,
+            reviewResolvedBy: true,
+          },
+          orderBy: { reviewResolvedAt: 'desc' },
+          take: 50,
+        }),
+      ]);
+
+      const items = [
+        ...purchases.map((row) => ({
+          kind: 'purchase' as const,
+          reference: `ticket-${row.id}`,
+          name: row.buyerName,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          reason: row.paymentReview,
+          resolution: row.reviewResolution,
+          note: row.reviewNote,
+          resolvedAt: row.reviewResolvedAt,
+          resolvedBy: row.reviewResolvedBy,
+        })),
+        ...individualOrders.map((row) => ({
+          kind: 'individual' as const,
+          reference: `ticket-${row.id}`,
+          name: row.guestName,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          reason: row.paymentReview,
+          resolution: row.reviewResolution,
+          note: row.reviewNote,
+          resolvedAt: row.reviewResolvedAt,
+          resolvedBy: row.reviewResolvedBy,
+        })),
+      ]
+        .sort(
+          (a, b) =>
+            (b.resolvedAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? 0),
+        )
+        .slice(0, 50);
+
+      return { items };
+    });
+  }
+
+  async inspectPaymentReview(
+    sessionToken: unknown,
+    slug: string,
+    kind: 'purchase' | 'individual',
+    id: string,
+  ) {
+    const booking = await this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      if (kind === 'purchase') {
+        const purchase = await tx.ticketPurchase.findFirst({
+          where: {
+            id,
+            tier: { eventId },
+            paymentReview: { not: null },
+          },
+          select: {
+            amountMinor: true,
+            currency: true,
+            paymentReview: true,
+          },
+        });
+
+        return purchase;
+      }
+
+      return tx.ticketOrder.findFirst({
+        where: {
+          id,
+          purchaseId: null,
+          tier: { eventId },
+          paymentReview: { not: null },
+        },
+        select: {
+          amountMinor: true,
+          currency: true,
+          paymentReview: true,
+        },
+      });
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Payment review unavailable.');
+    }
+
+    // Contact Paystack after the authorization query has completed.
+    const provider = await this.payments.inspectProviderPayment(id);
+
+    return {
+      reference: `ticket-${id}`,
+      reviewReason: booking.paymentReview,
+      expectedAmountMinor: booking.amountMinor,
+      expectedCurrency: booking.currency,
+      provider,
+      matches: {
+        reference: provider.reference === `ticket-${id}`,
+        amount: provider.amountMinor === booking.amountMinor,
+        currency: provider.currency === booking.currency,
+      },
+    };
+  }
+  async resolveReversedPaymentReview(
+    sessionToken: unknown,
+    slug: string,
+    kind: 'purchase' | 'individual',
+    id: string,
+  ) {
+    const inspection = await this.inspectPaymentReview(
+      sessionToken,
+      slug,
+      kind,
+      id,
+    );
+
+    if (
+      inspection.provider.status !== 'reversed' ||
+      !inspection.matches.reference ||
+      !inspection.matches.amount ||
+      !inspection.matches.currency
+    ) {
+      throw new ConflictException(
+        'Paystack has not confirmed a matching reversed transaction.',
+      );
+    }
+
+    const processedRefunds = inspection.provider.refunds.filter(
+      (refund) =>
+        refund.status === 'processed' &&
+        refund.currency === inspection.expectedCurrency &&
+        Number.isSafeInteger(refund.amountMinor) &&
+        refund.amountMinor > 0,
+    );
+
+    const processedAmount = processedRefunds.reduce(
+      (total, refund) => total + refund.amountMinor,
+      0,
+    );
+
+    const fullyRefunded =
+      processedRefunds.length > 0 &&
+      processedAmount === inspection.expectedAmountMinor;
+
+    const resolution = fullyRefunded
+      ? 'PROVIDER_REFUND_PROCESSED'
+      : 'PROVIDER_REVERSED';
+
+    return this.repository.transaction(async (tx) => {
+      const { eventId, staffId } = await this.requireOrganizer(
+        tx,
+        sessionToken,
+        slug,
+      );
+
+      const data = {
+        reviewResolution: resolution,
+        reviewNote: fullyRefunded
+          ? 'Matching full refund verified as processed by Paystack.'
+          : 'Matching transaction verified as reversed by Paystack; no full processed refund found.',
+        reviewResolvedAt: new Date(),
+        reviewResolvedBy: staffId,
+      };
+
+      const result =
+        kind === 'purchase'
+          ? await tx.ticketPurchase.updateMany({
+              where: {
+                id,
+                tier: { eventId },
+                paymentReview: { not: null },
+                reviewResolvedAt: null,
+                paidAt: null,
+              },
+              data,
+            })
+          : await tx.ticketOrder.updateMany({
+              where: {
+                id,
+                purchaseId: null,
+                tier: { eventId },
+                paymentReview: { not: null },
+                reviewResolvedAt: null,
+                paidAt: null,
+              },
+              data,
+            });
+
+      if (result.count !== 1) {
+        throw new ConflictException('This payment review has already changed.');
+      }
+
+      return { resolution };
+    });
+  }
+
+  getOverviewTicketSales(sessionToken: unknown) {
+    return this.repository.transaction(async (tx) => {
+      const staff = await this.requireStaff(tx, sessionToken);
+
+      const assignments = await tx.eventStaffAssignment.findMany({
+        where: { staffId: staff.id, role: 'ORGANIZER' },
+        select: { eventId: true },
+      });
+      const eventIds = assignments.map(({ eventId }) => eventId);
+
+      if (eventIds.length === 0) {
+        return {
+          currency: 'KES',
+          paidOrders: 0,
+          ticketsSold: 0,
+          grossMinor: 0,
+          providerFeesMinor: 0,
+          feeRecordedOrders: 0,
+          feeAdjustedMinor: 0,
+        };
+      }
+
+      const [purchases, individualOrders] = await Promise.all([
+        tx.ticketPurchase.aggregate({
+          where: {
+            tier: { eventId: { in: eventIds } },
+            paidAt: { not: null },
+          },
+          _count: { _all: true, providerFeeMinor: true },
+          _sum: {
+            quantity: true,
+            amountMinor: true,
+            providerFeeMinor: true,
+          },
+        }),
+        tx.ticketOrder.aggregate({
+          where: {
+            tier: { eventId: { in: eventIds } },
+            purchaseId: null,
+            paidAt: { not: null },
+          },
+          _count: { _all: true, providerFeeMinor: true },
+          _sum: {
+            amountMinor: true,
+            providerFeeMinor: true,
+          },
+        }),
+      ]);
+
+      const paidOrders = purchases._count._all + individualOrders._count._all;
+      const ticketsSold =
+        (purchases._sum.quantity ?? 0) + individualOrders._count._all;
+      const grossMinor =
+        (purchases._sum.amountMinor ?? 0) +
+        (individualOrders._sum.amountMinor ?? 0);
+      const providerFeesMinor =
+        (purchases._sum.providerFeeMinor ?? 0) +
+        (individualOrders._sum.providerFeeMinor ?? 0);
+      const feeRecordedOrders =
+        purchases._count.providerFeeMinor +
+        individualOrders._count.providerFeeMinor;
+
+      return {
+        currency: 'KES',
+        paidOrders,
+        ticketsSold,
+        grossMinor,
+        providerFeesMinor,
+        feeRecordedOrders,
+        feeAdjustedMinor:
+          feeRecordedOrders === paidOrders
+            ? grossMinor - providerFeesMinor
+            : null,
+      };
+    });
+  }
+
+  getTicketSalesSummary(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const [purchases, individualOrders] = await Promise.all([
+        tx.ticketPurchase.aggregate({
+          where: { tier: { eventId }, paidAt: { not: null } },
+          _count: { _all: true, providerFeeMinor: true },
+          _sum: {
+            quantity: true,
+            amountMinor: true,
+            providerFeeMinor: true,
+          },
+        }),
+        tx.ticketOrder.aggregate({
+          where: {
+            tier: { eventId },
+            purchaseId: null,
+            paidAt: { not: null },
+          },
+          _count: { _all: true, providerFeeMinor: true },
+          _sum: {
+            amountMinor: true,
+            providerFeeMinor: true,
+          },
+        }),
+      ]);
+
+      const paidOrders = purchases._count._all + individualOrders._count._all;
+      const ticketsSold =
+        (purchases._sum.quantity ?? 0) + individualOrders._count._all;
+      const grossMinor =
+        (purchases._sum.amountMinor ?? 0) +
+        (individualOrders._sum.amountMinor ?? 0);
+      const providerFeesMinor =
+        (purchases._sum.providerFeeMinor ?? 0) +
+        (individualOrders._sum.providerFeeMinor ?? 0);
+      const feeRecordedOrders =
+        purchases._count.providerFeeMinor +
+        individualOrders._count.providerFeeMinor;
+
+      return {
+        currency: 'KES',
+        paidOrders,
+        ticketsSold,
+        grossMinor,
+        providerFeesMinor,
+        feeRecordedOrders,
+        feeAdjustedMinor:
+          feeRecordedOrders === paidOrders
+            ? grossMinor - providerFeesMinor
+            : null,
+      };
+    });
+  }
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {
       await this.repository.deleteSession(hashToken(sessionToken));

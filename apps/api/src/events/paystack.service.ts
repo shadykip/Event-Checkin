@@ -1,12 +1,24 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 
 type VerifiedPayment = {
+  id: number;
   reference: string;
   status: string;
   amount: number;
   currency: string;
   domain: string;
   paid_at: string | null;
+  fees: number | null;
+};
+
+export type PaystackRefund = {
+  id: number;
+  transaction: number;
+  amount: number;
+  currency: string;
+  status: string;
+  reference: string;
+  refunded_at: string | null;
 };
 
 @Injectable()
@@ -89,5 +101,35 @@ export class PaystackService {
     return this.request<VerifiedPayment>(
       `/transaction/verify/ticket-${encodeURIComponent(orderId)}`,
     );
+  }
+
+  async listRefundsForOrder(orderId: string): Promise<{
+    transaction: VerifiedPayment;
+    refunds: PaystackRefund[];
+  }> {
+    const transaction = await this.verify(orderId);
+
+    if (!Number.isSafeInteger(transaction.id) || transaction.id <= 0) {
+      throw new ServiceUnavailableException(
+        'Payment provider did not return a valid transaction ID.',
+      );
+    }
+
+    const refunds = await this.request<PaystackRefund[]>(
+      `/refund?transaction=${encodeURIComponent(String(transaction.id))}&perPage=50`,
+    );
+
+    if (!Array.isArray(refunds)) {
+      throw new ServiceUnavailableException(
+        'Payment provider returned an invalid refund list.',
+      );
+    }
+
+    return {
+      transaction,
+      refunds: refunds.filter(
+        (refund) => refund.transaction === transaction.id,
+      ),
+    };
   }
 }

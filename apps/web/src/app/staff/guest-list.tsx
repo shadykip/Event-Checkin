@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
 import RevokePassButton from "./revoke-pass-button";
 import ReplacePassButton from "./replace-pass-button";
+import ResendPaidPassButton from "./resend-paid-pass-button";
 
 
 type GuestStatus = "expected" | "checked_in" | "revoked";
@@ -17,6 +18,7 @@ type Guest = {
     checkedInAt: string | null;
     status: GuestStatus;
     rsvpStatus: GuestRsvpStatus;
+    isPaidTicket: boolean
 };
 
 type GuestPage = {
@@ -371,6 +373,9 @@ export default function GuestList({
                                                                     <span className="sr-only"> pass for {guest.guestName}</span>
                                                                 </summary>
                                                                 <div className="grid gap-1 pb-2">
+                                                                    {guest.isPaidTicket && (
+                                                                        <ResendPaidPassButton slug={slug} guest={guest} />
+                                                                    )}
                                                                     <ReplacePassButton slug={slug} guest={guest} />
                                                                     <RevokePassButton
                                                                         slug={slug}

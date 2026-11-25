@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -308,6 +309,20 @@ export class StaffController {
     );
   }
 
+  @Post('events/:slug/team/:staffId/resend-setup')
+  @Header('Cache-Control', 'no-store')
+  resendDoorStaffSetup(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('staffId') staffId: string,
+  ) {
+    return this.staff.resendDoorStaffSetup(
+      request.cookies?.[cookieName],
+      slug,
+      staffId,
+    );
+  }
+
   @Get('events/:slug/ticket-allocation')
   @Header('Cache-Control', 'no-store')
   getTicketAllocation(@Req() request: Request, @Param('slug') slug: string) {
@@ -381,6 +396,107 @@ export class StaffController {
     return this.staff.resetPassword(token, password);
   }
 
+  @Post('events/:slug/invitations/:invitationId/resend-paid-pass')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  resendPaidPass(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ) {
+    return this.staff.resendPaidPass(
+      request.cookies?.[cookieName],
+      slug,
+      invitationId,
+    );
+  }
+
+  @Get('events/:slug/payment-reviews')
+  @Header('Cache-Control', 'no-store')
+  listPaymentReviews(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.listPaymentReviews(request.cookies?.[cookieName], slug);
+  }
+
+  @Get('events/:slug/payment-reviews/:kind/:id/provider')
+  @Header('Cache-Control', 'no-store')
+  inspectPaymentReview(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('kind') kind: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    if (kind !== 'purchase' && kind !== 'individual') {
+      throw new BadRequestException('Invalid payment review type.');
+    }
+
+    return this.staff.inspectPaymentReview(
+      request.cookies?.[cookieName],
+      slug,
+      kind,
+      id,
+    );
+  }
+
+  @Post('events/:slug/payment-reviews/:kind/:id/resolve-reversed')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  resolveReversedPaymentReview(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Param('kind') kind: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    if (kind !== 'purchase' && kind !== 'individual') {
+      throw new BadRequestException('Invalid payment review type.');
+    }
+
+    return this.staff.resolveReversedPaymentReview(
+      request.cookies?.[cookieName],
+      slug,
+      kind,
+      id,
+    );
+  }
+  @Get('events/:slug/payment-reviews/resolved')
+  @Header('Cache-Control', 'no-store')
+  listResolvedPaymentReviews(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+  ) {
+    return this.staff.listResolvedPaymentReviews(
+      request.cookies?.[cookieName],
+      slug,
+    );
+  }
+  @Get('events/:slug/ticket-sales')
+  @Header('Cache-Control', 'no-store')
+  ticketSales(@Req() request: Request, @Param('slug') slug: string) {
+    return this.staff.getTicketSalesSummary(
+      request.cookies?.[cookieName],
+      slug,
+    );
+  }
+  @Get('overview/ticket-sales')
+  @Header('Cache-Control', 'no-store')
+  overviewTicketSales(@Req() request: Request) {
+    return this.staff.getOverviewTicketSales(request.cookies?.[cookieName]);
+  }
+  @Post('events/:slug/team/invite')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  inviteDoorStaff(
+    @Req() request: Request,
+    @Param('slug') slug: string,
+    @Body('name') name: unknown,
+    @Body('email') email: unknown,
+  ) {
+    return this.staff.inviteDoorStaff(
+      request.cookies?.[cookieName],
+      slug,
+      name,
+      email,
+    );
+  }
   @Post('logout')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')

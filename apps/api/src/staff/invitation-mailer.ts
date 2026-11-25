@@ -90,3 +90,65 @@ export async function sendPasswordResetEmail(
     ].join('\n'),
   });
 }
+
+export async function sendCheckoutRecoveryEmail(order: {
+  id: string;
+  checkoutKey: string;
+  buyerName: string;
+  buyerEmail: string;
+}): Promise<void> {
+  const base = process.env.WEB_PUBLIC_URL ?? 'http://localhost:3002';
+  const link = new URL(`/checkout/${order.id}`, base);
+  link.hash = order.checkoutKey;
+
+  await transport.sendMail({
+    from: {
+      name: 'Event Check-in',
+      address: 'invitations@example.test',
+    },
+    to: { name: order.buyerName, address: order.buyerEmail },
+    subject: 'Your Event Check-in booking link',
+    text: [
+      `Hello ${order.buyerName},`,
+      '',
+      'Use this private link to reopen your booking and check your payment status:',
+      link.href,
+      '',
+      `Order reference: ticket-${order.id}`,
+      '',
+      'The link can also open tickets that have already been paid for.',
+      'Keep it private. If you did not request it, you can ignore this email.',
+    ].join('\n'),
+  });
+}
+
+export async function sendStaffSetupEmail(
+  name: string,
+  email: string,
+  eventName: string,
+  token: string,
+): Promise<void> {
+  const base = process.env.WEB_PUBLIC_URL ?? 'http://localhost:3002';
+  const link = new URL('/staff/reset-password', base);
+  link.hash = token;
+
+  await transport.sendMail({
+    from: {
+      name: 'Event Check-in',
+      address: 'invitations@example.test',
+    },
+    to: { name, address: email },
+    subject: `Set up your Event Check-in access for ${eventName}`,
+    text: [
+      `Hello ${name},`,
+      '',
+      `You have been invited as door staff for ${eventName}.`,
+      'Open this private link to set your password:',
+      link.href,
+      '',
+      'The link expires in 30 minutes and can be used once.',
+      'After setting your password, sign in to access the event check-in screen.',
+      'If you did not expect this invitation, you can ignore this email.',
+    ].join('\n'),
+  });
+}

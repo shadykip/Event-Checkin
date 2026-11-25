@@ -16,6 +16,7 @@ const paymentFields = {
   checkoutUrl: true,
   paidAt: true,
   paymentReview: true,
+  reviewResolution: true,
   tier: {
     select: {
       eventId: true,

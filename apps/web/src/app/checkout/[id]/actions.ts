@@ -3,7 +3,14 @@
 import type { Attendee } from "../../ticket-quantity";
 
 type OrderStatus = {
-  state: "reserved" | "expired" | "review" | "paid" | "pass_changed";
+  state:
+    | "reserved"
+    | "expired"
+    | "review"
+    | "paid"
+    | "pass_changed"
+    | "reversed"
+    | "refunded";
   tierName: string;
   eventSlug: string;
   quantity: number;

@@ -6,6 +6,7 @@ import styles from "./staff-styles";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { descriptionStyles } from "./event-description-editor";
+import TicketSalesCards from "./ticket-sales-cards";
 
 import CreateEventForm from "./create-event-form";
 import EventDirectory, { EventBanner } from "./event-directory";
@@ -235,6 +236,10 @@ export default function StaffDashboard({
                             ))}
                         </dl>
 
+                        {events.some((event) => event.role === "ORGANIZER") && (
+                            <TicketSalesCards />
+                        )}
+
                         <section className="rounded-2xl bg-slate-900 p-6 text-white sm:p-8">
                             <h2 className="text-sm font-semibold text-teal-300">Next event</h2>
                             {next ? (
@@ -337,7 +342,7 @@ export default function StaffDashboard({
                                 )}
 
                                 <EventOperations
-                                    key={selected.slug}
+                                    // key={selected.slug}
                                     slug={selected.slug}
                                     role={selected.role}
                                 />

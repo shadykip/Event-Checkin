@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  allowedDevOrigins: ["172.31.1.44"],
+
   async rewrites() {
     const api = process.env.API_BASE_URL;
     if (!api) throw new Error("Set API_BASE_URL in apps/web/.env.local");
@@ -77,6 +79,10 @@ const nextConfig: NextConfig = {
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/team/:staffId`,
       },
       {
+        source: "/api/staff/events/:slug/team/invite",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/team/invite`,
+      },
+      {
         source: "/api/staff/password/forgot",
         destination: new URL("/staff/password/forgot", api).href,
       },
@@ -100,6 +106,41 @@ const nextConfig: NextConfig = {
         source: "/api/staff/events/:slug/ticket-tiers/:tierId",
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-tiers/:tierId`,
       },
+      {
+        source:
+          "/api/staff/events/:slug/invitations/:invitationId/resend-paid-pass",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/invitations/:invitationId/resend-paid-pass`,
+      },
+      {
+        source: "/api/staff/events/:slug/payment-reviews",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/payment-reviews`,
+      },
+      {
+        source: "/api/staff/events/:slug/payment-reviews/:kind/:id/provider",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/payment-reviews/:kind/:id/provider`,
+      },
+      {
+        source: "/api/staff/events/:slug/ticket-sales",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-sales`,
+      },
+      {
+        source: "/api/staff/overview/ticket-sales",
+        destination: new URL("/staff/overview/ticket-sales", api).href,
+      },
+      {
+        source:
+          "/api/staff/events/:slug/payment-reviews/:kind/:id/resolve-reversed",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/payment-reviews/:kind/:id/resolve-reversed`,
+      },
+      {
+        source: "/api/staff/events/:slug/payment-reviews/resolved",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/payment-reviews/resolved`,
+      },
+      {
+        source: "/api/staff/events/:slug/team/:staffId/resend-setup",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/team/:staffId/resend-setup`,
+      },
+
       {
         source: "/api/staff/logout",
         destination: new URL("/staff/logout", api).href,

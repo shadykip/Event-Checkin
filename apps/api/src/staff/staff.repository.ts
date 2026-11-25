@@ -345,6 +345,7 @@ export class StaffRepository {
         checkIns: {
           select: { checkedInAt: true },
         },
+        ticketOrder: { select: { paidAt: true } },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip,
@@ -740,25 +741,6 @@ export class StaffRepository {
       ORDER BY t.archived, t.price_minor, t.name, t.id
     `;
   }
-
-  // listTicketTiers(tx: DbClient, eventId: string) {
-  //   return tx.ticketTier.findMany({
-  //     where: { eventId },
-  //     select: {
-  //       id: true,
-  //       name: true,
-  //       priceMinor: true,
-  //       peoplePerTicket: true,
-  //       currency: true,
-  //       capacity: true,
-  //       salesStartAt: true,
-  //       salesEndAt: true,
-  //       archived: true,
-  //       version: true,
-  //     },
-  //     orderBy: [{ archived: 'asc' }, { priceMinor: 'asc' }, { name: 'asc' }],
-  //   });
-  // }
 
   createTicketTier(
     tx: DbClient,

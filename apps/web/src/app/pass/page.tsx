@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import GuestRsvp, { type RsvpStatus } from "./guest-rsvp";
 import AddToCalendar from "./add-to-calendar";
 import { admissions } from "../public-events";
+import PassActions from "./pass-actions";
 
 
 type Invitation = {
@@ -224,6 +225,12 @@ export default function GuestPassPage() {
             token={token}
             initialStatus={invitation.rsvpStatus}
             onUnavailable={() => setView({ status: "unavailable" })}
+          />
+          <PassActions
+            key={token}
+            token={token}
+            guestName={invitation.guestName}
+            event={event}
           />
 
           <div className="mt-5 flex flex-wrap items-end gap-x-3 border-t border-slate-200">

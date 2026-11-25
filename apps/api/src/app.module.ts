@@ -19,6 +19,7 @@ import { TicketPaymentService } from './events/ticket-payment.service';
 import 'dotenv/config';
 import { TicketRecoveryRepository } from './events/ticket-recovery.repository';
 import { TicketRecoveryWorker } from './events/ticket-recovery.worker';
+import { TicketCheckoutRecoveryService } from './events/ticket-checkout-recovery.service';
 
 @Module({
   controllers: [
@@ -43,6 +44,7 @@ import { TicketRecoveryWorker } from './events/ticket-recovery.worker';
     TicketPaymentService,
     TicketRecoveryRepository,
     TicketRecoveryWorker,
+    TicketCheckoutRecoveryService,
   ],
 })
 export class AppModule {}

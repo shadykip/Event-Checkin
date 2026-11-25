@@ -70,6 +70,9 @@ export default function PublicNavigation() {
           <Link href="/" className={navigationLink}>
             Explore events
           </Link>
+          <Link href="/recover" className={navigationLink}>
+            Find booking
+          </Link>
           <Link href="/staff/login" className={signInLink}>
             Organizer sign-in
           </Link>

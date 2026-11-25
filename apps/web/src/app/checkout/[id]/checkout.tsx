@@ -63,6 +63,22 @@ const states = {
     symbol: "!",
     badge: "bg-amber-50 text-amber-900 ring-amber-200",
   },
+  reversed: {
+    title: "Payment reversed",
+    label: "Provider reversal confirmed",
+    description:
+      "The payment provider reports this transaction as reversed. No QR passes were issued for this booking. Contact the organizer with your order reference if you need help.",
+    symbol: "!",
+    badge: "bg-slate-100 text-slate-700 ring-slate-200",
+  },
+  refunded: {
+    title: "Refund processed",
+    label: "Paystack refund processed",
+    description:
+      "Paystack reports that your payment has been refunded. It may take time for the funds to appear in your account. No QR passes were issued for this booking.",
+    symbol: "✓",
+    badge: "bg-teal-50 text-teal-900 ring-teal-200",
+  },
 } as const;
 
 export default function Checkout() {
@@ -90,6 +106,17 @@ export default function Checkout() {
 
     async function load() {
       try {
+        const recovered = window.location.hash.slice(1);
+        const isRecoveryLink =
+          /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(recovered);
+        if (isRecoveryLink) {
+          sessionStorage.setItem(`ticket-checkout:${id}`, recovered);
+          window.history.replaceState(
+            window.history.state,
+            '',
+            `${window.location.pathname}${window.location.search}`,
+          );
+        }
         const key = sessionStorage.getItem(`ticket-checkout:${id}`);
         if (!key) {
           if (active)
@@ -97,12 +124,13 @@ export default function Checkout() {
               id,
               missingKey: true,
               error:
-                "Open checkout in the browser tab where you reserved. If you paid, check your email for the pass.",
+                "This browser has no checkout key.Request a private link at your purchase email to reopen your booking."
             });
           return;
         }
 
-        const result = await readPayment(id, key, returned || refresh > 0);
+
+        const result = await readPayment(id, key, isRecoveryLink || returned || refresh > 0);
         if (!active) return;
         if ("error" in result) {
           setScreen((previous) => ({
@@ -181,12 +209,12 @@ export default function Checkout() {
   const state = order
     ? order.state === "reserved" && returned
       ? {
-          ...states.reserved,
-          title: "Awaiting payment confirmation",
-          label: "Confirmation pending",
-          description:
-            "Your payment has not been confirmed yet. Check its status before attempting another payment.",
-        }
+        ...states.reserved,
+        title: "Awaiting payment confirmation",
+        label: "Confirmation pending",
+        description:
+          "Your payment has not been confirmed yet. Check its status before attempting another payment.",
+      }
       : states[order.state]
     : null;
   const price = order ? money(order.amountMinor, order.currency) : null;
@@ -318,12 +346,11 @@ export default function Checkout() {
             <>
               {!returned && (
                 <div
-                  className={`mb-6 rounded-2xl border p-5 ${
-                    countdown.secondsLeft !== null &&
+                  className={`mb-6 rounded-2xl border p-5 ${countdown.secondsLeft !== null &&
                     countdown.secondsLeft <= 60
-                      ? "border-amber-200 bg-amber-50 text-amber-950"
-                      : "border-teal-200 bg-teal-50 text-teal-950"
-                  }`}
+                    ? "border-amber-200 bg-amber-50 text-amber-950"
+                    : "border-teal-200 bg-teal-50 text-teal-950"
+                    }`}
                 >
                   <h2 className="text-sm font-semibold">
                     {countdown.expired ? "Hold time ended" : "Time left to pay"}
@@ -429,12 +456,14 @@ export default function Checkout() {
               Browse events
             </Link>
           )}
-          {(order?.state === "review" || order?.state === "pass_changed") && (
-            <p className="text-base leading-7 text-slate-600">
-              Share the order reference with the organizer so they can find your
-              booking.
-            </p>
-          )}
+          {(order?.state === "review" ||
+            order?.state === "pass_changed" ||
+            order?.state === "reversed" || order?.state === "refunded") && (
+              <p className="text-base leading-7 text-slate-600">
+                Share the order reference with the organizer so they can find your
+                booking.
+              </p>
+            )}
 
           {error && (
             <p
@@ -445,7 +474,16 @@ export default function Checkout() {
             </p>
           )}
 
-          {showStatusCheck && current && (
+          {current?.missingKey && (
+            <Link
+              href={`/recover?reference=ticket-${encodeURIComponent(id)}`}
+              className={`${publicStyles.primary} mt-5 w-full`}
+            >
+              Email my checkout link
+            </Link>
+          )}
+
+          {showStatusCheck && current && !canOpenPass && !current?.missingKey && (
             <button
               type="button"
               onClick={checkStatus}

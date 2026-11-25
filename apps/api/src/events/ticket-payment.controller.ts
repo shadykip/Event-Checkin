@@ -15,12 +15,14 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { PaystackService } from './paystack.service';
 import { TicketPaymentService } from './ticket-payment.service';
+import { TicketCheckoutRecoveryService } from './ticket-checkout-recovery.service';
 
 @Controller('payments')
 export class TicketPaymentController {
   constructor(
     private readonly payments: TicketPaymentService,
     private readonly provider: PaystackService,
+    private readonly recovery: TicketCheckoutRecoveryService,
   ) {}
 
   @Post('orders/:id/start')
@@ -87,5 +89,15 @@ export class TicketPaymentController {
     }
 
     return { received: true };
+  }
+
+  @Post('orders/recover')
+  @HttpCode(202)
+  @Header('Cache-Control', 'no-store')
+  recover(
+    @Body('reference') reference: unknown,
+    @Body('email') email: unknown,
+  ) {
+    return this.recovery.request(reference, email);
   }
 }

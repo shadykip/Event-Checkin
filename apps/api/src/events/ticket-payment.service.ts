@@ -83,6 +83,7 @@ export class TicketPaymentService {
       checkoutUrl?: string;
       paidAt?: Date;
       paymentReview?: string;
+      providerFeeMinor?: number | null;
     },
   ) {
     const where = { id: booking.id };
@@ -163,6 +164,12 @@ export class TicketPaymentService {
       if (booking.paidAt || booking.paymentReview) return;
       const now = await inventoryTime(tx);
       const paidAt = new Date(payment.paid_at ?? '');
+      const providerFeeMinor =
+        typeof payment.fees === 'number' &&
+        Number.isSafeInteger(payment.fees) &&
+        payment.fees >= 0
+          ? payment.fees
+          : null;
       let review: string | undefined;
       if (
         payment.reference !== `ticket-${id}` ||
@@ -209,6 +216,7 @@ export class TicketPaymentService {
                 paidAt,
                 invitationId: invitations.get(ticket.tokenHash)!,
                 recoveryAttempts: 0,
+                ...(booking.kind === 'order' ? { providerFeeMinor } : {}),
               },
             });
           }
@@ -220,7 +228,7 @@ export class TicketPaymentService {
             data: { recoveryAfter: now },
           });
           if (booking.kind === 'purchase')
-            await this.updatePayment(tx, booking, { paidAt });
+            await this.updatePayment(tx, booking, { paidAt, providerFeeMinor });
           return;
         }
         // Remove only the rows this transaction inserted. No partial set of passes becomes visible.
@@ -280,6 +288,18 @@ export class TicketPaymentService {
       currency: booking.currency,
       expiresAt: booking.expiresAt,
     };
+    if (
+      booking.paymentReview &&
+      booking.reviewResolution === 'PROVIDER_REFUND_PROCESSED'
+    ) {
+      return { ...common, state: 'refunded' };
+    }
+    if (
+      booking.paymentReview &&
+      booking.reviewResolution === 'PROVIDER_REVERSED'
+    ) {
+      return { ...common, state: 'reversed' };
+    }
     if (booking.paymentReview) return { ...common, state: 'review' };
     if (booking.paidAt) {
       const passes = booking.tickets.map((ticket, index) => {
@@ -310,6 +330,46 @@ export class TicketPaymentService {
       maxQuantity: canEditQuantity(booking, now)
         ? await maximumQuantity(this.db, booking, now)
         : undefined,
+    };
+  }
+
+  async resendCurrentPass(id: string) {
+    const order = await this.db.ticketOrder.findUnique({
+      where: { id },
+      include: { invitation: { include: { event: true } } },
+    });
+    if (!order?.paidAt || !order.invitation || order.invitation.revokedAt) {
+      throw new NotFoundException('Paid pass unavailable.');
+    }
+    const token = this.token(id);
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    if (order.invitation.tokenHash !== tokenHash) {
+      throw new ConflictException(
+        'This pass was replaced. Email its replacement link, or replace it again.',
+      );
+    }
+    await sendInvitationEmail(order.invitation, token);
+    return { accepted: true };
+  }
+
+  async inspectProviderPayment(id: string) {
+    const { transaction, refunds } =
+      await this.paystack.listRefundsForOrder(id);
+
+    return {
+      status: transaction.status,
+      reference: transaction.reference,
+      amountMinor: transaction.amount,
+      currency: transaction.currency,
+      domain: transaction.domain,
+      paidAt: transaction.paid_at ?? null,
+      refunds: refunds.map((refund) => ({
+        id: refund.id,
+        status: refund.status,
+        amountMinor: refund.amount,
+        currency: refund.currency,
+        refundedAt: refund.refunded_at,
+      })),
     };
   }
 }
