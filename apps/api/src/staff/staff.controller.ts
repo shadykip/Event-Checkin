@@ -481,6 +481,27 @@ export class StaffController {
   overviewTicketSales(@Req() request: Request) {
     return this.staff.getOverviewTicketSales(request.cookies?.[cookieName]);
   }
+  @Get('events/:slug/ticket-sales/export')
+  @Header('Cache-Control', 'no-store')
+  async exportTicketSales(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('slug') slug: string,
+  ) {
+    const csv = await this.staff.exportTicketSales(
+      request.cookies?.[cookieName],
+      slug,
+    );
+
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${slug.replace(/[^a-zA-Z0-9_-]/g, '_')}-ticket-sales.csv"`,
+    );
+
+    return csv;
+  }
+
   @Post('events/:slug/team/invite')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')

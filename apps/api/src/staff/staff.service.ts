@@ -1553,6 +1553,94 @@ export class StaffService {
       };
     });
   }
+  async exportTicketSales(sessionToken: unknown, slug: string) {
+    return this.repository.transaction(async (tx) => {
+      const { eventId } = await this.requireOrganizer(tx, sessionToken, slug);
+
+      const [purchases, individualOrders] = await Promise.all([
+        tx.ticketPurchase.findMany({
+          where: { tier: { eventId }, paidAt: { not: null } },
+          select: {
+            id: true,
+            buyerName: true,
+            buyerEmail: true,
+            quantity: true,
+            amountMinor: true,
+            providerFeeMinor: true,
+            currency: true,
+            paidAt: true,
+            tier: { select: { name: true } },
+          },
+        }),
+        tx.ticketOrder.findMany({
+          where: {
+            tier: { eventId },
+            purchaseId: null,
+            paidAt: { not: null },
+          },
+          select: {
+            id: true,
+            guestName: true,
+            guestEmail: true,
+            tierName: true,
+            amountMinor: true,
+            providerFeeMinor: true,
+            currency: true,
+            paidAt: true,
+          },
+        }),
+      ]);
+
+      const cell = (value: string | number | null | undefined) => {
+        let text = value == null ? '' : String(value);
+
+        // Prevent spreadsheet programs from interpreting user-entered text as formulas.
+        if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+
+      const rows = [
+        ...purchases.map((purchase) => ({
+          paidAt: purchase.paidAt!,
+          values: [
+            `ticket-${purchase.id}`,
+            'purchase',
+            purchase.tier.name,
+            purchase.buyerName,
+            purchase.buyerEmail,
+            purchase.quantity,
+            purchase.currency,
+            purchase.amountMinor,
+            purchase.providerFeeMinor,
+            purchase.paidAt!.toISOString(),
+          ],
+        })),
+        ...individualOrders.map((order) => ({
+          paidAt: order.paidAt!,
+          values: [
+            `ticket-${order.id}`,
+            'individual',
+            order.tierName,
+            order.guestName,
+            order.guestEmail,
+            1,
+            order.currency,
+            order.amountMinor,
+            order.providerFeeMinor,
+            order.paidAt!.toISOString(),
+          ],
+        })),
+      ].sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime());
+
+      return (
+        [
+          'reference,type,tier,name,email,tickets,currency,gross_minor,provider_fee_minor,paid_at',
+          ...rows.map(({ values }) => values.map(cell).join(',')),
+        ].join('\r\n') + '\r\n'
+      );
+    });
+  }
   async logout(sessionToken: unknown): Promise<void> {
     if (isToken(sessionToken)) {
       await this.repository.deleteSession(hashToken(sessionToken));

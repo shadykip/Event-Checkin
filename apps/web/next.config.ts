@@ -140,6 +140,10 @@ const nextConfig: NextConfig = {
         source: "/api/staff/events/:slug/team/:staffId/resend-setup",
         destination: `${api.replace(/\/$/, "")}/staff/events/:slug/team/:staffId/resend-setup`,
       },
+      {
+        source: "/api/staff/events/:slug/ticket-sales/export",
+        destination: `${api.replace(/\/$/, "")}/staff/events/:slug/ticket-sales/export`,
+      },
 
       {
         source: "/api/staff/logout",

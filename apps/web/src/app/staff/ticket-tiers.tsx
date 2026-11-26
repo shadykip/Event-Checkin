@@ -170,6 +170,12 @@ export default function TicketTiers({ slug }: { slug: string }) {
                 >
                     Add ticket tier
                 </button>
+                <a
+                    href={`/api/staff/events/${encodeURIComponent(slug)}/ticket-sales/export`}
+                    className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:border-teal-600 hover:text-teal-800"
+                >
+                    Download sales CSV
+                </a>
                 {ready && (
                     <button
                         type="button"

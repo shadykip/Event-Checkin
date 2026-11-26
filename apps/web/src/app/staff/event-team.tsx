@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent } from "react";
 import styles from "./staff-styles";
+import ResendStaffSetupButton from "./resend-staff-setup-button";
 
 type Member = {
     id: string;
@@ -185,6 +186,10 @@ export default function EventTeam({ slug }: { slug: string }) {
                                                     >
                                                         Remove
                                                     </button>
+
+                                                )}
+                                                {member.role === "DOOR_STAFF" && member.isActive && (
+                                                    <ResendStaffSetupButton slug={slug} staffId={member.id} />
                                                 )}
                                             </div>
                                         </div>
